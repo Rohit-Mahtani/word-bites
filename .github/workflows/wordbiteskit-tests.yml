@@ -27,3 +27,5 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: "Demo: generate a board and play a round"
+        run: swift run WordBitesCLI < Scripts/demo-guesses.txt

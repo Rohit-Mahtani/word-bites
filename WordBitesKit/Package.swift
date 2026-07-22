@@ -11,6 +11,10 @@ let package = Package(
         .library(
             name: "WordBitesKit",
             targets: ["WordBitesKit"]
+        ),
+        .executable(
+            name: "WordBitesCLI",
+            targets: ["WordBitesCLI"]
         )
     ],
     targets: [
@@ -19,6 +23,10 @@ let package = Package(
             resources: [
                 .process("Resources/enable1.txt")
             ]
+        ),
+        .executableTarget(
+            name: "WordBitesCLI",
+            dependencies: ["WordBitesKit"]
         ),
         .testTarget(
             name: "WordBitesKitTests",
