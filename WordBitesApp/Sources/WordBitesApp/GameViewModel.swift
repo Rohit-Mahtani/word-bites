@@ -2,35 +2,55 @@ import Foundation
 import Combine
 import WordBitesKit
 
+enum GameMode: Equatable {
+    case timed
+    case untimed
+}
+
+struct ScoreToast: Identifiable, Equatable {
+    let id: UUID
+    let word: String
+    let points: Int
+}
+
 /// Drives one round: dealing tiles, scattering them onto the board with no
 /// two touching, handling drag placement, scanning for newly formed words,
-/// and running the 80s timer. Mirrors the mechanics validated in the
-/// browser prototype, but built on WordBitesKit's real types directly
-/// instead of a reimplementation.
+/// and running the timer (timed mode only). Owned once at the app root and
+/// reused across rounds via `startRound(mode:)` so the dictionary/bigram
+/// pool — the slow part — only ever loads once.
 @MainActor
 final class GameViewModel: ObservableObject {
     static let roundSeconds = 80
 
+    @Published private(set) var mode: GameMode = .timed
     @Published private(set) var board = Board()
     @Published private(set) var tiles: [Tile] = []
     @Published private(set) var placements: [UUID: Placement] = [:]
     @Published private(set) var score = 0
-    @Published private(set) var foundWords: [(word: String, points: Int)] = []
     @Published private(set) var timeRemaining = GameViewModel.roundSeconds
     @Published private(set) var roundOver = false
     @Published private(set) var isDealing = true
     @Published private(set) var loadError: String?
+    @Published private(set) var scoreToast: ScoreToast?
+
+    @Published private(set) var solverWords: Set<String> = []
+    @Published private(set) var isComputingSolverWords = false
+
+    private(set) var foundWords: Set<String> = []
 
     private var dictionary: WordDictionary?
+    private var wordFinder: WordFinder?
     private var generator: BoardGenerator?
+    private var loadingTask: Task<Void, Never>?
     private var timer: Timer?
-    private var foundWordSet: Set<String> = []
+    private var toastQueue: [ScoreToast] = []
+    private var toastDismissTask: Task<Void, Never>?
 
     init() {
-        Task { await loadResourcesAndDeal() }
+        loadingTask = Task { await loadResources() }
     }
 
-    private func loadResourcesAndDeal() async {
+    private func loadResources() async {
         do {
             let dictionary = try await Task.detached(priority: .userInitiated) {
                 try WordDictionary.loadEnable1()
@@ -39,21 +59,30 @@ final class GameViewModel: ObservableObject {
                 BigramPool(dictionary: dictionary)
             }.value
             self.dictionary = dictionary
+            self.wordFinder = WordFinder(dictionary: dictionary)
             self.generator = BoardGenerator(
                 bigramPool: bigramPool,
                 solvabilityChecker: SolvabilityChecker(dictionary: dictionary)
             )
-            startRound()
         } catch {
             loadError = "Couldn't load the dictionary: \(error.localizedDescription)"
         }
     }
 
-    func startRound() {
-        guard let generator else { return }
+    /// Starts a fresh round in the given mode, waiting for the one-time
+    /// dictionary/generator load if it hasn't finished yet.
+    func startRound(mode: GameMode) {
+        self.mode = mode
         isDealing = true
         timer?.invalidate()
+        toastDismissTask?.cancel()
+        toastQueue = []
+        scoreToast = nil
+        solverWords = []
+
         Task {
+            await loadingTask?.value
+            guard let generator else { return }
             let deal = try? await Task.detached(priority: .userInitiated) {
                 try generator.generateDeal()
             }.value
@@ -67,7 +96,6 @@ final class GameViewModel: ObservableObject {
         board = Board()
         placements = [:]
         foundWords = []
-        foundWordSet = []
         score = 0
         timeRemaining = Self.roundSeconds
         roundOver = false
@@ -80,21 +108,45 @@ final class GameViewModel: ObservableObject {
         }
 
         isDealing = false
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+
+        if mode == .timed {
+            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.tick() }
+            }
         }
     }
 
     private func tick() {
         guard timeRemaining > 0 else { return }
         timeRemaining -= 1
-        if timeRemaining == 0 { endRound() }
+        if timeRemaining == 0 { finishRound() }
     }
 
-    private func endRound() {
+    /// Ends the round early (the "Quit Game" action) and moves to the
+    /// solver screen, same destination as a timed round running out.
+    func quitGame() {
+        finishRound()
+    }
+
+    private func finishRound() {
+        guard !roundOver else { return }
         roundOver = true
         timer?.invalidate()
         timer = nil
+        computeSolverWords()
+    }
+
+    private func computeSolverWords() {
+        guard let wordFinder else { return }
+        isComputingSolverWords = true
+        let currentTiles = tiles
+        Task {
+            let words = await Task.detached(priority: .userInitiated) {
+                wordFinder.allPossibleWords(from: currentTiles)
+            }.value
+            solverWords = words
+            isComputingSolverWords = false
+        }
     }
 
     /// Attempts to move `tileID` so its origin lands at `origin`, keeping
@@ -131,17 +183,15 @@ final class GameViewModel: ObservableObject {
             scanLine(length: Board.rowCount, newlyFound: &newlyFound) { row in Position(column: col, row: row) }
         }
         guard !newlyFound.isEmpty else { return }
+
         for (word, points) in newlyFound {
-            foundWordSet.insert(word)
-            foundWords.append((word, points))
+            foundWords.insert(word)
             score += points
         }
+        enqueueToasts(newlyFound)
+        FeedbackPlayer.wordScored()
     }
 
-    /// Walks `length` positions along one row or column (as produced by
-    /// `position`), collecting maximal contiguous filled runs and handing
-    /// each one to `considerCompletedRun`. Runs one iteration past `length`
-    /// so a run ending at the last cell still gets flushed.
     private func scanLine(length: Int, newlyFound: inout [(String, Int)], position: (Int) -> Position) {
         var current = ""
         for i in 0...length {
@@ -158,9 +208,27 @@ final class GameViewModel: ObservableObject {
     private func considerCompletedRun(_ run: String, newlyFound: inout [(String, Int)]) {
         guard run.count >= WordDictionary.minimumWordLength else { return }
         guard let dictionary, dictionary.isValidWord(run) else { return }
-        guard !foundWordSet.contains(run) else { return }
+        guard !foundWords.contains(run) else { return }
         guard let points = Scorer.points(for: run) else { return }
         newlyFound.append((run, points))
+    }
+
+    private func enqueueToasts(_ events: [(String, Int)]) {
+        toastQueue.append(contentsOf: events.map { ScoreToast(id: UUID(), word: $0.0, points: $0.1) })
+        advanceToastQueueIfNeeded()
+    }
+
+    private func advanceToastQueueIfNeeded() {
+        guard scoreToast == nil, !toastQueue.isEmpty else { return }
+        let next = toastQueue.removeFirst()
+        scoreToast = next
+        toastDismissTask?.cancel()
+        toastDismissTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_300_000_000)
+            guard !Task.isCancelled else { return }
+            self?.scoreToast = nil
+            self?.advanceToastQueueIfNeeded()
+        }
     }
 
     /// Scatters `tileList` onto the board so no two tiles' cells are even

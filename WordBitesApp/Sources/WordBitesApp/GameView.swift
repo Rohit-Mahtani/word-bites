@@ -1,8 +1,10 @@
 import SwiftUI
 import WordBitesKit
 
-struct ContentView: View {
-    @StateObject private var viewModel = GameViewModel()
+struct GameView: View {
+    @ObservedObject var viewModel: GameViewModel
+    let onNewGame: () -> Void
+    let onRoundFinished: () -> Void
 
     var body: some View {
         GeometryReader { geometry in
@@ -17,12 +19,16 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
 
-                VStack(spacing: 16) {
+                VStack(spacing: 10) {
                     HUDView(
+                        mode: viewModel.mode,
                         score: viewModel.score,
                         timeRemaining: viewModel.timeRemaining,
-                        onNewBoard: viewModel.startRound
+                        onNewGame: onNewGame,
+                        onQuit: viewModel.quitGame
                     )
+
+                    ScoreToastView(toast: viewModel.scoreToast)
 
                     Spacer(minLength: 0)
 
@@ -40,19 +46,12 @@ struct ContentView: View {
                     }
 
                     Spacer(minLength: 0)
-
-                    FoundWordsView(words: viewModel.foundWords)
                 }
                 .padding(14)
-
-                if viewModel.roundOver {
-                    RoundEndOverlay(
-                        score: viewModel.score,
-                        words: viewModel.foundWords,
-                        onPlayAgain: viewModel.startRound
-                    )
-                }
             }
+        }
+        .onChange(of: viewModel.roundOver) { isOver in
+            if isOver { onRoundFinished() }
         }
     }
 
