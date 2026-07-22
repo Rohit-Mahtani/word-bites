@@ -7,8 +7,17 @@ import WordBitesKit
 // mid-keystroke — a real UI would need actual input handling to cut you off
 // exactly on time.
 
-print("Loading dictionary...")
-let dictionary = try WordDictionary.loadEnable1()
+// WORDBITES_DICTIONARY_PATH lets a local run swap in a personally licensed
+// word list (e.g. Collins CSW) instead of the bundled public-domain ENABLE1 —
+// never set in CI, never committed, so the public build always uses ENABLE1.
+let dictionary: WordDictionary
+if let customPath = ProcessInfo.processInfo.environment["WORDBITES_DICTIONARY_PATH"] {
+    print("Loading dictionary from \(customPath)...")
+    dictionary = try WordDictionary.load(from: URL(fileURLWithPath: customPath))
+} else {
+    print("Loading dictionary (ENABLE1)...")
+    dictionary = try WordDictionary.loadEnable1()
+}
 let bigramPool = BigramPool(dictionary: dictionary)
 let solvabilityChecker = SolvabilityChecker(dictionary: dictionary)
 let generator = BoardGenerator(bigramPool: bigramPool, solvabilityChecker: solvabilityChecker)

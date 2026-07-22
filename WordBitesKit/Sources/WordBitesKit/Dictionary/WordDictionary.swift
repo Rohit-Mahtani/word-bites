@@ -37,7 +37,15 @@ public extension WordDictionary {
         guard let url = Bundle.module.url(forResource: "enable1", withExtension: "txt") else {
             throw DictionaryError.resourceNotFound
         }
-        let contents = try String(contentsOf: url, encoding: .utf8)
+        return try load(from: url)
+    }
+
+    /// Loads a dictionary from an arbitrary word list file on disk (one word
+    /// per line) rather than a bundled resource. For loading a personally
+    /// licensed word list that isn't part of the package/repo — never point
+    /// this at a file that gets committed or published.
+    static func load(from fileURL: URL) throws -> WordDictionary {
+        let contents = try String(contentsOf: fileURL, encoding: .utf8)
         let lines = contents.split(whereSeparator: \.isNewline).map(String.init)
         return WordDictionary(words: lines)
     }
