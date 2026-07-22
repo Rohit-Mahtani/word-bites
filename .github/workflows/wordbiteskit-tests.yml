@@ -1,0 +1,29 @@
+name: WordBitesKit Tests
+
+on:
+  push:
+    paths:
+      - 'WordBitesKit/**'
+      - '.github/workflows/wordbiteskit-tests.yml'
+  pull_request:
+    paths:
+      - 'WordBitesKit/**'
+      - '.github/workflows/wordbiteskit-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: WordBitesKit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
