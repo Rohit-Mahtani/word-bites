@@ -20,7 +20,7 @@ public struct HighScoreBoardGenerator: Sendable {
 
     // "Planters" (C-anchor) and "maligners" (T-anchor) — see project notes.
     private static let archetypes: [Archetype] = [
-        Archetype(anchor: "C", extras: ["I", "K", "D", "O"]),
+        Archetype(anchor: "C", extras: ["G", "I", "K", "D", "O"]),
         Archetype(anchor: "T", extras: ["C", "O", "H", "D", "K"])
     ]
 
@@ -42,7 +42,7 @@ public struct HighScoreBoardGenerator: Sendable {
     public func generateDeal(
         potential: Double,
         candidatePoolSize: Int = 15,
-        maxAttemptsPerCandidate: Int = 400
+        maxAttemptsPerCandidate: Int = 600
     ) throws -> Deal {
         let strength = min(max(potential, 0), 1)
         let candidateCount = max(1, 1 + Int(strength * Double(candidatePoolSize - 1)))

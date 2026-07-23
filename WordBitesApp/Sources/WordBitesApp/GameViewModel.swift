@@ -42,6 +42,7 @@ final class GameViewModel: ObservableObject {
     private var wordFinder: WordFinder?
     private var generator: HighScoreBoardGenerator?
     private var loadingTask: Task<Void, Never>?
+    private var dealingTask: Task<Void, Never>?
     private var timer: Timer?
     private var toastDismissTask: Task<Void, Never>?
     private let statsStore: StatsStore
@@ -84,13 +85,18 @@ final class GameViewModel: ObservableObject {
         scoreToast = nil
         solverWords = []
 
-        Task {
+        // Cancel any deal still being generated from a previous call — without
+        // this, calling startRound again quickly (e.g. backing out and picking
+        // a new mode before the first deal finishes) could let the stale Task
+        // finish later and overwrite the round the player actually asked for.
+        dealingTask?.cancel()
+        dealingTask = Task {
             await loadingTask?.value
             guard let generator else { return }
             let deal = try? await Task.detached(priority: .userInitiated) {
                 try generator.generateDeal(potential: scoringPotential)
             }.value
-            guard let deal else { return }
+            guard !Task.isCancelled, let deal else { return }
             applyNewDeal(deal)
         }
     }

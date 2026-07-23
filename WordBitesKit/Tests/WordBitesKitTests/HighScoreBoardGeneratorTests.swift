@@ -37,7 +37,7 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
     }
 
     func testHighPotentialNeverFusesTwoHookLettersIntoOneDouble() throws {
-        let planters: Set<Character> = ["C", "I", "K", "D", "O"]
+        let planters: Set<Character> = ["C", "G", "I", "K", "D", "O"]
         let maligners: Set<Character> = ["T", "C", "O", "H", "D", "K"]
         let generator = makeGenerator()
 
