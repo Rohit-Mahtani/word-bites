@@ -101,6 +101,22 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Starts a round from a fully player-specified board — no generator,
+    /// no vowel/solvability checks, exactly the 11 tiles they typed in.
+    /// Tile *positions* are still randomized at deal time via the same
+    /// no-touching scatter every board uses; only the letters are custom.
+    func startRound(mode: GameMode, customDeal: Deal) {
+        self.mode = mode
+        isDealing = true
+        timer?.invalidate()
+        toastDismissTask?.cancel()
+        scoreToast = nil
+        solverWords = []
+        dealingTask?.cancel()
+        dealingTask = nil
+        applyNewDeal(customDeal)
+    }
+
     private func applyNewDeal(_ deal: Deal) {
         tiles = deal.allTiles
         board = Board()
