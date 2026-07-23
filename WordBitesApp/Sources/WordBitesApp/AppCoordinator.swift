@@ -5,6 +5,7 @@ enum AppScreen: Equatable {
     case modeSelect
     case playing
     case solver
+    case stats
 }
 
 @MainActor

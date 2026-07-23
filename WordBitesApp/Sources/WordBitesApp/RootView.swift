@@ -1,15 +1,26 @@
 import SwiftUI
 
-/// Owns the single long-lived `GameViewModel` (so the dictionary/bigram
-/// pool only ever load once) and switches screens based on the coordinator.
+/// Owns the single long-lived `GameViewModel` and `StatsStore` (so the
+/// dictionary/bigram pool and best-score tracking only ever live once) and
+/// switches screens based on the coordinator.
 struct RootView: View {
     @StateObject private var coordinator = AppCoordinator()
-    @StateObject private var gameViewModel = GameViewModel()
+    @StateObject private var statsStore: StatsStore
+    @StateObject private var gameViewModel: GameViewModel
+
+    init() {
+        let stats = StatsStore()
+        _statsStore = StateObject(wrappedValue: stats)
+        _gameViewModel = StateObject(wrappedValue: GameViewModel(statsStore: stats))
+    }
 
     var body: some View {
         switch coordinator.screen {
         case .welcome:
-            WelcomeView(onSinglePlayer: { coordinator.screen = .modeSelect })
+            WelcomeView(
+                onSinglePlayer: { coordinator.screen = .modeSelect },
+                onShowStats: { coordinator.screen = .stats }
+            )
 
         case .modeSelect:
             ModeSelectView(
@@ -23,7 +34,7 @@ struct RootView: View {
         case .playing:
             GameView(
                 viewModel: gameViewModel,
-                onNewGame: { coordinator.screen = .modeSelect },
+                onBackToHome: { coordinator.screen = .welcome },
                 onRoundFinished: { coordinator.screen = .solver }
             )
 
@@ -36,6 +47,9 @@ struct RootView: View {
                 onBack: { coordinator.screen = .welcome },
                 onNewGame: { coordinator.screen = .modeSelect }
             )
+
+        case .stats:
+            StatsView(statsStore: statsStore, onBack: { coordinator.screen = .welcome })
         }
     }
 }

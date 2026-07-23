@@ -1,63 +1,55 @@
 import SwiftUI
 
 /// Slim single-row bar — deliberately compact so the board stays the
-/// visual center of the screen instead of the chrome.
+/// visual center of the screen instead of the chrome. Both nav actions are
+/// back arrows now: left always leaves for the welcome screen, right ends
+/// the round and shows the solver (identical destination the old "Quit"
+/// button used — quitGame() still drives it via GameViewModel.roundOver).
 struct HUDView: View {
     let mode: GameMode
     let score: Int
+    let wordCount: Int
     let timeRemaining: Int
-    let onNewGame: () -> Void
-    let onQuit: () -> Void
+    let onBackToHome: () -> Void
+    let onBackToSolver: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            actionButton(title: "Quit", action: onQuit)
+        HStack(spacing: 8) {
+            BackButton(action: onBackToHome, tint: Theme.chromeText, backgroundOpacity: 0.12)
 
             Spacer()
-            hudItem(label: "Score", value: "\(score)", tint: Theme.cream)
+            hudItem(label: "Score", value: "\(score)")
+            Spacer()
+            hudItem(label: "Words", value: "\(wordCount)")
 
             if mode == .timed {
                 Spacer()
                 hudItem(
                     label: "Time",
                     value: "\(max(0, timeRemaining))",
-                    tint: timeRemaining <= 15 ? Color(hex: 0xB5533C) : Theme.cream
+                    tint: timeRemaining <= 15 ? Theme.error : Theme.chromeText
                 )
             }
 
             Spacer()
-            actionButton(title: "New Game", action: onNewGame)
+            BackButton(action: onBackToSolver, tint: Theme.chromeText, backgroundOpacity: 0.12)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
-            LinearGradient(colors: [Theme.woodLight, Theme.wood, Theme.woodDeep], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Theme.chrome, Theme.chromeMid, Theme.chromeDeep], startPoint: .top, endPoint: .bottom)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func actionButton(title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.woodDeep)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    LinearGradient(colors: [Theme.accent, Theme.accentDeep], startPoint: .top, endPoint: .bottom)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-    }
-
-    private func hudItem(label: String, value: String, tint: Color) -> some View {
+    private func hudItem(label: String, value: String, tint: Color = Theme.chromeText) -> some View {
         VStack(spacing: 1) {
             Text(label.uppercased())
                 .font(.system(size: 9, weight: .medium))
                 .tracking(1.0)
-                .foregroundColor(Theme.creamDim)
+                .foregroundColor(Theme.chromeTextDim)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundColor(tint)
         }

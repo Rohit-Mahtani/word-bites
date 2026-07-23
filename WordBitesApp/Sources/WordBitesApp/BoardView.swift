@@ -11,6 +11,7 @@ struct BoardView: View {
 
     @State private var dragOffsets: [UUID: CGSize] = [:]
     @State private var draggingTileID: UUID?
+    @State private var dragCandidateOrigin: Position?
 
     private var pitch: CGFloat { cellSize + Theme.gap }
     private var boardWidth: CGFloat { CGFloat(Board.columnCount) * pitch - Theme.gap }
@@ -19,6 +20,7 @@ struct BoardView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             boardBackground
+            dropZoneHighlight
             ForEach(viewModel.tiles, id: \.id) { tile in
                 if let placement = viewModel.placement(for: tile.id) {
                     tileView(tile: tile, placement: placement)
@@ -31,9 +33,9 @@ struct BoardView: View {
     private var boardBackground: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(colors: [Theme.felt, Theme.feltDeep], startPoint: .top, endPoint: .bottom))
+                .fill(LinearGradient(colors: [Theme.boardBlue, Theme.boardBlueDeep], startPoint: .top, endPoint: .bottom))
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Theme.woodLight, lineWidth: 2)
+                .stroke(Theme.chromeMid, lineWidth: 2)
             gridLines
         }
         .frame(width: boardWidth, height: boardHeight)
@@ -52,7 +54,38 @@ struct BoardView: View {
                 path.addLine(to: CGPoint(x: boardWidth, y: y))
             }
         }
-        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+    }
+
+    /// Highlights the cell(s) the currently-dragged tile would land on if
+    /// released right now — green if that spot's valid, red if it isn't.
+    @ViewBuilder
+    private var dropZoneHighlight: some View {
+        if let tileID = draggingTileID,
+           let origin = dragCandidateOrigin,
+           let tile = viewModel.tiles.first(where: { $0.id == tileID }) {
+            let orientation = orientation(for: tile)
+            let cells = Board.cells(origin: origin, cellCount: tile.cellCount, direction: orientation)
+            let valid = viewModel.canPlace(tileID: tileID, at: origin)
+
+            ForEach(cells.indices, id: \.self) { index in
+                let cell = cells[index]
+                if cell.column >= 0, cell.column < Board.columnCount, cell.row >= 0, cell.row < Board.rowCount {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(valid ? Color.green.opacity(0.35) : Color.red.opacity(0.35))
+                        .frame(width: cellSize, height: cellSize)
+                        .position(
+                            x: CGFloat(cell.column) * pitch + cellSize / 2,
+                            y: CGFloat(cell.row) * pitch + cellSize / 2
+                        )
+                }
+            }
+        }
+    }
+
+    private func orientation(for tile: Tile) -> TileOrientation {
+        if case .double(let d) = tile { return d.orientation }
+        return .horizontal
     }
 
     private func tileSize(for tile: Tile) -> CGSize {
@@ -83,8 +116,16 @@ struct BoardView: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        draggingTileID = tile.id
+                        if draggingTileID != tile.id {
+                            draggingTileID = tile.id
+                            FeedbackPlayer.tilePickedUp()
+                        }
                         dragOffsets[tile.id] = value.translation
+                        let liveTopLeft = CGPoint(x: base.x + value.translation.width, y: base.y + value.translation.height)
+                        dragCandidateOrigin = Position(
+                            column: Int((liveTopLeft.x / pitch).rounded()),
+                            row: Int((liveTopLeft.y / pitch).rounded())
+                        )
                     }
                     .onEnded { value in
                         let newTopLeft = CGPoint(
@@ -97,7 +138,9 @@ struct BoardView: View {
                             viewModel.attemptMove(tileID: tile.id, to: Position(column: col, row: row))
                             dragOffsets[tile.id] = nil
                             draggingTileID = nil
+                            dragCandidateOrigin = nil
                         }
+                        FeedbackPlayer.tilePlaced()
                     }
             )
     }

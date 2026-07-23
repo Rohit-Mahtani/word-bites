@@ -14,13 +14,13 @@ struct ScoreToastView: View {
                         .font(.custom("Georgia-Bold", size: 18))
                     Text("+\(toast.points)")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Theme.accent)
+                        .foregroundColor(Theme.boardBlueDeep)
                 }
-                .foregroundColor(Theme.cream)
+                .foregroundColor(Theme.chromeText)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
-                    LinearGradient(colors: [Theme.wood, Theme.woodDeep], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [Theme.chrome, Theme.chromeMid], startPoint: .top, endPoint: .bottom)
                 )
                 .clipShape(Capsule())
                 .shadow(color: .black.opacity(0.3), radius: 6, y: 3)

@@ -61,17 +61,57 @@ final class ModelsTests: XCTestCase {
 
     func testBoardWordThroughReadsFullRun() {
         var board = Board()
-        let letters: [Character] = ["C", "A", "T"]
-        for (i, ch) in letters.enumerated() {
-            board.setLetter(ch, at: Position(column: i, row: 0))
+        for (i, letter) in ["C", "A", "T"].enumerated() {
+            let tile = SingleTile(letter: Character(letter))
+            let placement = Placement(tileID: tile.id, origin: Position(column: i, row: 0), direction: .horizontal)
+            XCTAssertTrue(board.place(.single(tile), at: placement))
         }
         XCTAssertEqual(board.word(through: Position(column: 1, row: 0), direction: .horizontal), "CAT")
     }
 
     func testBoardWordThroughSingleLetterIsNil() {
         var board = Board()
-        board.setLetter("X", at: Position(column: 0, row: 0))
+        let tile = SingleTile(letter: "x")
+        let placement = Placement(tileID: tile.id, origin: Position(column: 0, row: 0), direction: .horizontal)
+        board.place(.single(tile), at: placement)
         XCTAssertNil(board.word(through: Position(column: 0, row: 0), direction: .horizontal))
+    }
+
+    func testSameLetterDifferentTilesCannotOverlap() {
+        var board = Board()
+        let t1 = SingleTile(letter: "s")
+        let t2 = SingleTile(letter: "s")
+        let origin = Position(column: 3, row: 4)
+        XCTAssertTrue(board.place(.single(t1), at: Placement(tileID: t1.id, origin: origin, direction: .horizontal)))
+        XCTAssertFalse(board.place(.single(t2), at: Placement(tileID: t2.id, origin: origin, direction: .horizontal)),
+                       "a different tile must never be allowed to overlap just because its letter matches")
+        XCTAssertEqual(board.tileID(at: origin), t1.id)
+    }
+
+    func testTileCanRePlaceAtItsOwnCurrentPosition() {
+        var board = Board()
+        let tile = SingleTile(letter: "q")
+        let placement = Placement(tileID: tile.id, origin: Position(column: 2, row: 2), direction: .horizontal)
+        XCTAssertTrue(board.place(.single(tile), at: placement))
+        XCTAssertTrue(board.canPlace(.single(tile), at: placement), "re-placing a tile at its own spot must stay allowed")
+    }
+
+    func testRemoveOnlyClearsCellsStillOwnedByThatTile() {
+        var board = Board()
+        let t1 = SingleTile(letter: "m")
+        let t2 = SingleTile(letter: "n")
+        let origin = Position(column: 5, row: 5)
+        let placement1 = Placement(tileID: t1.id, origin: origin, direction: .horizontal)
+        XCTAssertTrue(board.place(.single(t1), at: placement1))
+
+        // t1 moves away, t2 moves into the now-empty cell.
+        board.remove(.single(t1), at: placement1)
+        let placement2 = Placement(tileID: t2.id, origin: origin, direction: .horizontal)
+        XCTAssertTrue(board.place(.single(t2), at: placement2))
+
+        // A stale removal of t1 at its old spot must not evict t2.
+        board.remove(.single(t1), at: placement1)
+        XCTAssertEqual(board.tileID(at: origin), t2.id)
     }
 
     func testDealSatisfiesHardConstraints() {

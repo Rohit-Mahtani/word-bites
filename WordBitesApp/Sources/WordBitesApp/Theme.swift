@@ -1,26 +1,46 @@
 import SwiftUI
 
-/// Same game-table palette validated in the browser prototype: felt board,
-/// walnut chrome, bone tiles. One committed look, no light/dark variant —
-/// matches the prototype's deliberate single-theme choice.
+/// Blue + light brown/peach game-table palette. One committed look, no
+/// light/dark variant. Chrome (HUD bars, headers) is now the LIGHT color,
+/// which flips which text token belongs where:
+///   - pageText / pageTextDim: light text for anything sitting directly on
+///     a blue background (page glow, board).
+///   - chromeText / chromeTextDim: dark text for anything sitting on the
+///     light chrome bars (or on the gold accent buttons).
 enum Theme {
     /// Spacing between adjacent board cells — also how much a double tile's
     /// footprint extends across the gap it straddles.
     static let gap: CGFloat = 4
 
-    static let felt = Color(hex: 0x1F4A3D)
-    static let feltDeep = Color(hex: 0x143025)
-    static let wood = Color(hex: 0x5B3A24)
-    static let woodDeep = Color(hex: 0x3E2717)
-    static let woodLight = Color(hex: 0x7A5232)
-    static let tile = Color(hex: 0xF2E8D0)
-    static let tileDouble = Color(hex: 0xE8D6A0)
-    static let tileEdge = Color(hex: 0xC9B98A)
-    static let ink = Color(hex: 0x3B2A1E)
-    static let cream = Color(hex: 0xF5EFE0)
-    static let creamDim = Color(hex: 0xD8C9AB)
+    // Page background (radial gradient behind every screen).
+    static let pageGlow = Color(hex: 0x3E7BA6)
+    static let pageDeep = Color(hex: 0x122438)
+
+    // Board surface.
+    static let boardBlue = Color(hex: 0x2C5F8A)
+    static let boardBlueDeep = Color(hex: 0x1B3A57)
+
+    // Chrome: HUD bar, headers — light brown/peach, replacing the old wood.
+    static let chrome = Color(hex: 0xDDB98C)
+    static let chromeMid = Color(hex: 0xC9986B)
+    static let chromeDeep = Color(hex: 0xA9714A)
+
+    // Tiles.
+    static let tile = Color(hex: 0xF0CFA6)
+    static let tileDouble = Color(hex: 0xE6B980)
+    static let tileEdge = Color(hex: 0xC99A66)
+    static let ink = Color.black
+
+    // Text.
+    static let pageText = Color(hex: 0xF5EFE0)
+    static let pageTextDim = Color(hex: 0xD8CBB0)
+    static let chromeText = Color(hex: 0x3B2A1E)
+    static let chromeTextDim = Color(hex: 0x6B4E36)
+
+    // Accent (unchanged gold) + semantic error.
     static let accent = Color(hex: 0xC9A227)
     static let accentDeep = Color(hex: 0x9C7A18)
+    static let error = Color(hex: 0xB5533C)
 }
 
 extension Color {

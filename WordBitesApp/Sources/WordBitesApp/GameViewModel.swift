@@ -43,10 +43,11 @@ final class GameViewModel: ObservableObject {
     private var generator: BoardGenerator?
     private var loadingTask: Task<Void, Never>?
     private var timer: Timer?
-    private var toastQueue: [ScoreToast] = []
     private var toastDismissTask: Task<Void, Never>?
+    private let statsStore: StatsStore
 
-    init() {
+    init(statsStore: StatsStore) {
+        self.statsStore = statsStore
         loadingTask = Task { await loadResources() }
     }
 
@@ -76,7 +77,6 @@ final class GameViewModel: ObservableObject {
         isDealing = true
         timer?.invalidate()
         toastDismissTask?.cancel()
-        toastQueue = []
         scoreToast = nil
         solverWords = []
 
@@ -133,6 +133,7 @@ final class GameViewModel: ObservableObject {
         roundOver = true
         timer?.invalidate()
         timer = nil
+        statsStore.record(score: score, wordCount: foundWords.count)
         computeSolverWords()
     }
 
@@ -174,6 +175,17 @@ final class GameViewModel: ObservableObject {
 
     func placement(for tileID: UUID) -> Placement? { placements[tileID] }
 
+    /// Non-mutating check for live drag feedback: could `tileID` actually
+    /// land with its origin at `origin` right now? Simulates on a copy of
+    /// the board (a value type) so nothing here touches real state.
+    func canPlace(tileID: UUID, at origin: Position) -> Bool {
+        guard let tile = tiles.first(where: { $0.id == tileID }),
+              let previous = placements[tileID] else { return false }
+        var probe = board
+        probe.remove(tile, at: previous)
+        return probe.canPlace(tile, at: Placement(tileID: tileID, origin: origin, direction: previous.direction))
+    }
+
     private func scanForNewWords() {
         var newlyFound: [(String, Int)] = []
         for row in 0..<Board.rowCount {
@@ -187,9 +199,11 @@ final class GameViewModel: ObservableObject {
         for (word, points) in newlyFound {
             foundWords.insert(word)
             score += points
+            FeedbackPlayer.wordScored(length: word.count)
         }
-        enqueueToasts(newlyFound)
-        FeedbackPlayer.wordScored()
+        // Only the most recent word is shown — it should replace whatever
+        // was up instantly, never wait in a queue behind an earlier one.
+        showToast(for: newlyFound[newlyFound.count - 1])
     }
 
     private func scanLine(length: Int, newlyFound: inout [(String, Int)], position: (Int) -> Position) {
@@ -213,21 +227,15 @@ final class GameViewModel: ObservableObject {
         newlyFound.append((run, points))
     }
 
-    private func enqueueToasts(_ events: [(String, Int)]) {
-        toastQueue.append(contentsOf: events.map { ScoreToast(id: UUID(), word: $0.0, points: $0.1) })
-        advanceToastQueueIfNeeded()
-    }
-
-    private func advanceToastQueueIfNeeded() {
-        guard scoreToast == nil, !toastQueue.isEmpty else { return }
-        let next = toastQueue.removeFirst()
-        scoreToast = next
+    /// Instantly swaps in the new word — never queues behind a previous
+    /// one, so back-to-back words each replace the display immediately.
+    private func showToast(for event: (word: String, points: Int)) {
         toastDismissTask?.cancel()
+        scoreToast = ScoreToast(id: UUID(), word: event.word, points: event.points)
         toastDismissTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_300_000_000)
             guard !Task.isCancelled else { return }
             self?.scoreToast = nil
-            self?.advanceToastQueueIfNeeded()
         }
     }
 

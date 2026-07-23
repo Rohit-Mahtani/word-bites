@@ -7,7 +7,7 @@ struct ModeSelectView: View {
     var body: some View {
         ZStack {
             RadialGradient(
-                colors: [Color(hex: 0x2A5C4C), Theme.feltDeep],
+                colors: [Theme.pageGlow, Theme.pageDeep],
                 center: .init(x: 0.5, y: 0.2),
                 startRadius: 10,
                 endRadius: 500
@@ -24,7 +24,7 @@ struct ModeSelectView: View {
                 VStack(spacing: 28) {
                     Text("Choose a mode")
                         .font(.custom("Georgia-Bold", size: 22))
-                        .foregroundColor(Theme.cream)
+                        .foregroundColor(Theme.pageText)
 
                     VStack(spacing: 14) {
                         modeButton(title: "Timed", subtitle: "80 seconds on the clock") { onSelectMode(.timed) }
@@ -48,7 +48,7 @@ struct ModeSelectView: View {
                     .font(.system(size: 12))
                     .opacity(0.8)
             }
-            .foregroundColor(Theme.woodDeep)
+            .foregroundColor(Theme.chromeText)
             .frame(maxWidth: 260)
             .padding(.vertical, 14)
             .background(
@@ -59,17 +59,20 @@ struct ModeSelectView: View {
     }
 }
 
-/// Shared top-left back arrow used here and on the solver screen.
+/// Shared back arrow used across several screens (mode select, solver, and
+/// the two in-game navigation buttons).
 struct BackButton: View {
     let action: () -> Void
+    var tint: Color = Theme.pageText
+    var backgroundOpacity: Double = 0.1
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Theme.cream)
+                .foregroundColor(tint)
                 .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.1))
+                .background(tint.opacity(backgroundOpacity))
                 .clipShape(Circle())
         }
     }

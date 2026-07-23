@@ -3,7 +3,7 @@ import WordBitesKit
 
 struct GameView: View {
     @ObservedObject var viewModel: GameViewModel
-    let onNewGame: () -> Void
+    let onBackToHome: () -> Void
     let onRoundFinished: () -> Void
 
     var body: some View {
@@ -12,7 +12,7 @@ struct GameView: View {
 
             ZStack {
                 RadialGradient(
-                    colors: [Color(hex: 0x2A5C4C), Theme.feltDeep],
+                    colors: [Theme.pageGlow, Theme.pageDeep],
                     center: .init(x: 0.5, y: -0.1),
                     startRadius: 10,
                     endRadius: geometry.size.height
@@ -23,9 +23,10 @@ struct GameView: View {
                     HUDView(
                         mode: viewModel.mode,
                         score: viewModel.score,
+                        wordCount: viewModel.foundWords.count,
                         timeRemaining: viewModel.timeRemaining,
-                        onNewGame: onNewGame,
-                        onQuit: viewModel.quitGame
+                        onBackToHome: onBackToHome,
+                        onBackToSolver: viewModel.quitGame
                     )
 
                     ScoreToastView(toast: viewModel.scoreToast)
@@ -34,13 +35,13 @@ struct GameView: View {
 
                     if let loadError = viewModel.loadError {
                         Text(loadError)
-                            .foregroundColor(Theme.cream)
+                            .foregroundColor(Theme.pageText)
                             .multilineTextAlignment(.center)
                             .padding()
                     } else if viewModel.isDealing {
                         ProgressView("Dealing...")
-                            .tint(Theme.cream)
-                            .foregroundColor(Theme.cream)
+                            .tint(Theme.pageText)
+                            .foregroundColor(Theme.pageText)
                     } else {
                         BoardView(viewModel: viewModel, cellSize: cellSize)
                     }
