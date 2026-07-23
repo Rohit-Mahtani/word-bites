@@ -32,13 +32,17 @@ struct BoardView: View {
 
     private var boardBackground: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(colors: [Theme.boardBlue, Theme.boardBlueDeep], startPoint: .top, endPoint: .bottom))
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Theme.chromeMid, lineWidth: 2)
+            CheckerboardView(
+                columns: Board.columnCount,
+                rows: Board.rowCount,
+                cellSize: pitch,
+                colorA: Theme.boardCheckerA,
+                colorB: Theme.boardCheckerB
+            )
             gridLines
         }
         .frame(width: boardWidth, height: boardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var gridLines: some View {

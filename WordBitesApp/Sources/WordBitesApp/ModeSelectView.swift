@@ -2,7 +2,10 @@ import SwiftUI
 
 struct ModeSelectView: View {
     let onBack: () -> Void
-    let onSelectMode: (GameMode) -> Void
+    let onStart: (GameMode, Double) -> Void
+
+    @State private var mode: GameMode = .timed
+    @State private var scoringPotential: Double = 0
 
     var body: some View {
         ZStack {
@@ -21,14 +24,48 @@ struct ModeSelectView: View {
                 }
                 Spacer()
 
-                VStack(spacing: 28) {
+                VStack(spacing: 30) {
                     Text("Choose a mode")
                         .font(.custom("Georgia-Bold", size: 22))
                         .foregroundColor(Theme.pageText)
 
-                    VStack(spacing: 14) {
-                        modeButton(title: "Timed", subtitle: "80 seconds on the clock") { onSelectMode(.timed) }
-                        modeButton(title: "Untimed", subtitle: "Play until you quit") { onSelectMode(.untimed) }
+                    Picker("Mode", selection: $mode) {
+                        Text("Timed").tag(GameMode.timed)
+                        Text("Untimed").tag(GameMode.untimed)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 260)
+
+                    VStack(spacing: 10) {
+                        Text("SCORING POTENTIAL")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundColor(Theme.pageTextDim)
+
+                        Slider(value: $scoringPotential, in: 0...1)
+                            .tint(Theme.accent)
+                            .frame(maxWidth: 260)
+
+                        HStack {
+                            Text("Average")
+                            Spacer()
+                            Text("Very High")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Theme.pageTextDim)
+                        .frame(maxWidth: 260)
+                    }
+
+                    Button(action: { onStart(mode, scoringPotential) }) {
+                        Text("Play")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Theme.chromeText)
+                            .frame(maxWidth: 260)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(colors: [Theme.accent, Theme.accentDeep], startPoint: .top, endPoint: .bottom)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
 
@@ -38,29 +75,10 @@ struct ModeSelectView: View {
             .padding(20)
         }
     }
-
-    private func modeButton(title: String, subtitle: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Text(title)
-                    .font(.system(size: 17, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .opacity(0.8)
-            }
-            .foregroundColor(Theme.chromeText)
-            .frame(maxWidth: 260)
-            .padding(.vertical, 14)
-            .background(
-                LinearGradient(colors: [Theme.accent, Theme.accentDeep], startPoint: .top, endPoint: .bottom)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-    }
 }
 
 /// Shared back arrow used across several screens (mode select, solver, and
-/// the two in-game navigation buttons).
+/// the in-game "back to home" button).
 struct BackButton: View {
     let action: () -> Void
     var tint: Color = Theme.pageText

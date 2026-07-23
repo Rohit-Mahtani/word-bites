@@ -35,6 +35,37 @@ final class WordFinderTests: XCTestCase {
         XCTAssertTrue(results.contains("CAT"))
     }
 
+    func testFindsWordUsingDoubleTileInTheMiddle() {
+        // Regression test for a real report: a 7-letter word built from 5
+        // singles + 1 double tile straddling the middle of the word, not
+        // just sitting conveniently at one end.
+        let finder = makeFinder(words: ["panders", "pander"])
+        let tiles: [Tile] = [
+            .single(SingleTile(letter: "p")),
+            .single(SingleTile(letter: "a")),
+            .single(SingleTile(letter: "n")),
+            .single(SingleTile(letter: "d")),
+            .double(DoubleTile(firstLetter: "e", secondLetter: "r", orientation: .horizontal)),
+            .single(SingleTile(letter: "s"))
+        ]
+        let results = finder.allPossibleWords(from: tiles)
+        XCTAssertTrue(results.contains("PANDERS"), "5 singles + 1 mid-word double tile should combine to PANDERS")
+        XCTAssertTrue(results.contains("PANDER"), "the same double tile should also work at the end, for PANDER")
+    }
+
+    func testFindsWordUsingTwoDoubleTiles() {
+        let finder = makeFinder(words: ["handler"])
+        let tiles: [Tile] = [
+            .single(SingleTile(letter: "h")),
+            .double(DoubleTile(firstLetter: "a", secondLetter: "n", orientation: .horizontal)),
+            .single(SingleTile(letter: "d")),
+            .single(SingleTile(letter: "l")),
+            .double(DoubleTile(firstLetter: "e", secondLetter: "r", orientation: .horizontal))
+        ]
+        let results = finder.allPossibleWords(from: tiles)
+        XCTAssertTrue(results.contains("HANDLER"), "H + [AN] + D + L + [ER] should combine to HANDLER")
+    }
+
     func testRealDictionaryFindsMultipleWordsFromCommonLetters() throws {
         let dictionary = try WordDictionary.loadEnable1()
         let finder = WordFinder(dictionary: dictionary)

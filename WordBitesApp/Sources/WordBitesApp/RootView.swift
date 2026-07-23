@@ -25,8 +25,8 @@ struct RootView: View {
         case .modeSelect:
             ModeSelectView(
                 onBack: { coordinator.screen = .welcome },
-                onSelectMode: { mode in
-                    gameViewModel.startRound(mode: mode)
+                onStart: { mode, scoringPotential in
+                    gameViewModel.startRound(mode: mode, scoringPotential: scoringPotential)
                     coordinator.screen = .playing
                 }
             )

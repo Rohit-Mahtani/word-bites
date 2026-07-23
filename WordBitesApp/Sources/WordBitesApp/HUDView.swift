@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// Slim single-row bar — deliberately compact so the board stays the
-/// visual center of the screen instead of the chrome. Both nav actions are
-/// back arrows now: left always leaves for the welcome screen, right ends
-/// the round and shows the solver (identical destination the old "Quit"
-/// button used — quitGame() still drives it via GameViewModel.roundOver).
+/// visual center of the screen instead of the chrome. Left is a back arrow
+/// to the welcome screen; right is a small "Solver" button that ends the
+/// round early and shows the solver screen (quitGame() drives it via
+/// GameViewModel.roundOver, same as a timed round running out).
 struct HUDView: View {
     let mode: GameMode
     let score: Int
@@ -32,7 +32,7 @@ struct HUDView: View {
             }
 
             Spacer()
-            BackButton(action: onBackToSolver, tint: Theme.chromeText, backgroundOpacity: 0.12)
+            solverButton
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -40,6 +40,17 @@ struct HUDView: View {
             LinearGradient(colors: [Theme.chrome, Theme.chromeMid, Theme.chromeDeep], startPoint: .top, endPoint: .bottom)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var solverButton: some View {
+        Button(action: onBackToSolver) {
+            Text("Solver")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(Theme.chromeText)
+                .frame(width: 46, height: 46)
+                .background(Theme.chromeText.opacity(0.12))
+                .clipShape(Circle())
+        }
     }
 
     private func hudItem(label: String, value: String, tint: Color = Theme.chromeText) -> some View {

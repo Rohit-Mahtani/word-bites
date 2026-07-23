@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import WordBitesKit
 
-enum GameMode: Equatable {
+enum GameMode: Hashable {
     case timed
     case untimed
 }
@@ -40,7 +40,7 @@ final class GameViewModel: ObservableObject {
 
     private var dictionary: WordDictionary?
     private var wordFinder: WordFinder?
-    private var generator: BoardGenerator?
+    private var generator: HighScoreBoardGenerator?
     private var loadingTask: Task<Void, Never>?
     private var timer: Timer?
     private var toastDismissTask: Task<Void, Never>?
@@ -59,11 +59,13 @@ final class GameViewModel: ObservableObject {
             let bigramPool = await Task.detached(priority: .userInitiated) {
                 BigramPool(dictionary: dictionary)
             }.value
+            let wordFinder = WordFinder(dictionary: dictionary)
             self.dictionary = dictionary
-            self.wordFinder = WordFinder(dictionary: dictionary)
-            self.generator = BoardGenerator(
+            self.wordFinder = wordFinder
+            self.generator = HighScoreBoardGenerator(
                 bigramPool: bigramPool,
-                solvabilityChecker: SolvabilityChecker(dictionary: dictionary)
+                solvabilityChecker: SolvabilityChecker(dictionary: dictionary),
+                wordFinder: wordFinder
             )
         } catch {
             loadError = "Couldn't load the dictionary: \(error.localizedDescription)"
@@ -71,8 +73,10 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Starts a fresh round in the given mode, waiting for the one-time
-    /// dictionary/generator load if it hasn't finished yet.
-    func startRound(mode: GameMode) {
+    /// dictionary/generator load if it hasn't finished yet. `scoringPotential`
+    /// (0...1) is passed straight to `HighScoreBoardGenerator` — 0 is plain
+    /// random, 1 strongly biases toward the high-scoring board archetypes.
+    func startRound(mode: GameMode, scoringPotential: Double) {
         self.mode = mode
         isDealing = true
         timer?.invalidate()
@@ -84,7 +88,7 @@ final class GameViewModel: ObservableObject {
             await loadingTask?.value
             guard let generator else { return }
             let deal = try? await Task.detached(priority: .userInitiated) {
-                try generator.generateDeal()
+                try generator.generateDeal(potential: scoringPotential)
             }.value
             guard let deal else { return }
             applyNewDeal(deal)

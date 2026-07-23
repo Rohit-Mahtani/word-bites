@@ -16,9 +16,13 @@ enum Theme {
     static let pageGlow = Color(hex: 0x3E7BA6)
     static let pageDeep = Color(hex: 0x122438)
 
-    // Board surface.
-    static let boardBlue = Color(hex: 0x2C5F8A)
-    static let boardBlueDeep = Color(hex: 0x1B3A57)
+    // Board surface: light blue checkerboard.
+    static let boardCheckerA = Color(hex: 0xBFE0F2)
+    static let boardCheckerB = Color(hex: 0xA8D3EA)
+
+    // Game screen background (behind the board): darker blue checkerboard.
+    static let pageCheckerA = Color(hex: 0x1B3A57)
+    static let pageCheckerB = Color(hex: 0x16304A)
 
     // Chrome: HUD bar, headers — light brown/peach, replacing the old wood.
     static let chrome = Color(hex: 0xDDB98C)

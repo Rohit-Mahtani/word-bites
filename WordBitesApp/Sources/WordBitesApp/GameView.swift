@@ -11,13 +11,8 @@ struct GameView: View {
             let cellSize = Self.cellSize(forAvailableWidth: geometry.size.width)
 
             ZStack {
-                RadialGradient(
-                    colors: [Theme.pageGlow, Theme.pageDeep],
-                    center: .init(x: 0.5, y: -0.1),
-                    startRadius: 10,
-                    endRadius: geometry.size.height
-                )
-                .ignoresSafeArea()
+                FullScreenCheckerboard(tileSize: 24, colorA: Theme.pageCheckerA, colorB: Theme.pageCheckerB)
+                    .ignoresSafeArea()
 
                 VStack(spacing: 10) {
                     HUDView(
@@ -28,8 +23,10 @@ struct GameView: View {
                         onBackToHome: onBackToHome,
                         onBackToSolver: viewModel.quitGame
                     )
+                    .padding(.horizontal, 10)
 
                     ScoreToastView(toast: viewModel.scoreToast)
+                        .padding(.horizontal, 10)
 
                     Spacer(minLength: 0)
 
@@ -44,11 +41,12 @@ struct GameView: View {
                             .foregroundColor(Theme.pageText)
                     } else {
                         BoardView(viewModel: viewModel, cellSize: cellSize)
+                            .padding(.horizontal, 4)
                     }
 
                     Spacer(minLength: 0)
                 }
-                .padding(14)
+                .padding(.vertical, 14)
             }
         }
         .onChange(of: viewModel.roundOver) { isOver in
@@ -57,8 +55,8 @@ struct GameView: View {
     }
 
     private static func cellSize(forAvailableWidth width: CGFloat) -> CGFloat {
-        let usableWidth = min(width - 28, 460)
+        let usableWidth = min(width - 8, 700)
         let raw = (usableWidth - Theme.gap * CGFloat(Board.columnCount - 1)) / CGFloat(Board.columnCount)
-        return max(30, min(48, raw))
+        return max(30, min(56, raw))
     }
 }

@@ -14,7 +14,7 @@ struct ScoreToastView: View {
                         .font(.custom("Georgia-Bold", size: 18))
                     Text("+\(toast.points)")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Theme.boardBlueDeep)
+                        .foregroundColor(Theme.pageCheckerA)
                 }
                 .foregroundColor(Theme.chromeText)
                 .padding(.horizontal, 16)
