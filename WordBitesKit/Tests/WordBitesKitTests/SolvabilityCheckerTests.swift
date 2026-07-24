@@ -55,7 +55,7 @@ final class SolvabilityCheckerTests: XCTestCase {
     }
 
     func testRealDictionaryProducesSolvableHandPickedDeal() throws {
-        let dictionary = try WordDictionary.loadEnable1()
+        let dictionary = try WordDictionary.loadDefault()
         let checker = SolvabilityChecker(dictionary: dictionary)
         // Frequency-weighted common letters should always combine into words.
         let singles = ["e", "a", "r", "s", "t", "n"].map { SingleTile(letter: Character($0)) }

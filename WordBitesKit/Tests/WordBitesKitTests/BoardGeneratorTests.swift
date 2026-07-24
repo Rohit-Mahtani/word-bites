@@ -4,7 +4,7 @@ import XCTest
 final class BoardGeneratorTests: XCTestCase {
     // Built once and reused across tests in this class; scanning the full
     // dictionary to build the bigram pool is the expensive part.
-    static let dictionary: WordDictionary = try! WordDictionary.loadEnable1()
+    static let dictionary: WordDictionary = try! WordDictionary.loadDefault()
 
     static let bigramPool: BigramPool = BigramPool(dictionary: dictionary)
 

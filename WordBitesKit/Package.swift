@@ -21,7 +21,7 @@ let package = Package(
         .target(
             name: "WordBitesKit",
             resources: [
-                .process("Resources/enable1.txt")
+                .process("Resources/wordlist.txt")
             ]
         ),
         .executableTarget(

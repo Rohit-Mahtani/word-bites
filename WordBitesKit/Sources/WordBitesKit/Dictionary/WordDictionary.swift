@@ -4,7 +4,7 @@ public enum DictionaryError: Error {
     case resourceNotFound
 }
 
-/// Valid-word source for the game. Backed by the ENABLE word list.
+/// Valid-word source for the game. Backed by a bundled custom word list.
 /// Words shorter than 3 letters are dropped at load time: the spec treats
 /// 2-letter words as invalid/unscored for v1.
 public final class WordDictionary: @unchecked Sendable {
@@ -33,8 +33,8 @@ public final class WordDictionary: @unchecked Sendable {
 }
 
 public extension WordDictionary {
-    static func loadEnable1() throws -> WordDictionary {
-        guard let url = Bundle.module.url(forResource: "enable1", withExtension: "txt") else {
+    static func loadDefault() throws -> WordDictionary {
+        guard let url = Bundle.module.url(forResource: "wordlist", withExtension: "txt") else {
             throw DictionaryError.resourceNotFound
         }
         return try load(from: url)

@@ -2,7 +2,7 @@ import XCTest
 @testable import WordBitesKit
 
 final class HighScoreBoardGeneratorTests: XCTestCase {
-    static let dictionary: WordDictionary = try! WordDictionary.loadEnable1()
+    static let dictionary: WordDictionary = try! WordDictionary.loadDefault()
     static let bigramPool = BigramPool(dictionary: dictionary)
     static let solvabilityChecker = SolvabilityChecker(dictionary: dictionary)
     static let wordFinder = WordFinder(dictionary: dictionary)

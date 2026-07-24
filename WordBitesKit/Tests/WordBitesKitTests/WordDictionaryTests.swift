@@ -24,8 +24,8 @@ final class WordDictionaryTests: XCTestCase {
         XCTAssertFalse(dict.hasPrefix("cx"))
     }
 
-    func testLoadEnable1FromBundleResource() throws {
-        let dict = try WordDictionary.loadEnable1()
+    func testLoadDefaultFromBundleResource() throws {
+        let dict = try WordDictionary.loadDefault()
         XCTAssertTrue(dict.isValidWord("word"))
         XCTAssertTrue(dict.isValidWord("bites"))
         XCTAssertFalse(dict.isValidWord("zzzzqqqq"))

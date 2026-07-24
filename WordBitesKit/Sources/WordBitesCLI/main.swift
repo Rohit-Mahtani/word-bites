@@ -8,15 +8,15 @@ import WordBitesKit
 // exactly on time.
 
 // WORDBITES_DICTIONARY_PATH lets a local run swap in a personally licensed
-// word list (e.g. Collins CSW) instead of the bundled public-domain ENABLE1 —
-// never set in CI, never committed, so the public build always uses ENABLE1.
+// word list (e.g. Collins CSW) instead of the bundled word list —
+// never set in CI, never committed, so the public build always uses the bundled list.
 let dictionary: WordDictionary
 if let customPath = ProcessInfo.processInfo.environment["WORDBITES_DICTIONARY_PATH"] {
     print("Loading dictionary from \(customPath)...")
     dictionary = try WordDictionary.load(from: URL(fileURLWithPath: customPath))
 } else {
-    print("Loading dictionary (ENABLE1)...")
-    dictionary = try WordDictionary.loadEnable1()
+    print("Loading dictionary (bundled word list)...")
+    dictionary = try WordDictionary.loadDefault()
 }
 let bigramPool = BigramPool(dictionary: dictionary)
 let solvabilityChecker = SolvabilityChecker(dictionary: dictionary)

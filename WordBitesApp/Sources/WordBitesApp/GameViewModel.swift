@@ -55,7 +55,10 @@ final class GameViewModel: ObservableObject {
     private func loadResources() async {
         do {
             let dictionary = try await Task.detached(priority: .userInitiated) {
-                try WordDictionary.loadEnable1()
+                if let customPath = ProcessInfo.processInfo.environment["WORDBITES_DICTIONARY_PATH"] {
+                    return try WordDictionary.load(from: URL(fileURLWithPath: customPath))
+                }
+                return try WordDictionary.loadDefault()
             }.value
             let bigramPool = await Task.detached(priority: .userInitiated) {
                 BigramPool(dictionary: dictionary)

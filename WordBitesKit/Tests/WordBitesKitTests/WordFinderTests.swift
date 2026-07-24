@@ -67,7 +67,7 @@ final class WordFinderTests: XCTestCase {
     }
 
     func testRealDictionaryFindsMultipleWordsFromCommonLetters() throws {
-        let dictionary = try WordDictionary.loadEnable1()
+        let dictionary = try WordDictionary.loadDefault()
         let finder = WordFinder(dictionary: dictionary)
         let tiles: [Tile] = ["e", "a", "r", "s", "t", "n"].map { .single(SingleTile(letter: Character($0))) }
         let results = finder.allPossibleWords(from: tiles)
