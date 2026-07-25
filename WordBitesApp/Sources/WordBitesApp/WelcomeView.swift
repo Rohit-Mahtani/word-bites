@@ -18,8 +18,8 @@ struct WelcomeView: View {
                 Spacer()
 
                 VStack(spacing: 18) {
-                    TileLogoView(text: "WORD BITES", tileSize: 40, fontSize: 24, spacing: 6)
-                    Text("Welcome to Word Bites")
+                    TileLogoView(text: "ALIGNERS", tileSize: 40, fontSize: 24, spacing: 6)
+                    Text("Welcome to Aligners")
                         .font(.custom("Georgia", size: 16))
                         .foregroundColor(Theme.pageTextDim)
                 }

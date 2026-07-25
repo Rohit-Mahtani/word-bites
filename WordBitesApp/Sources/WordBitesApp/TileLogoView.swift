@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The "WORD BITES" wordmark rendered as actual game tiles — reused at
+/// The "ALIGNERS" wordmark rendered as actual game tiles — reused at
 /// different sizes on the welcome screen and (small) in the in-game HUD.
 struct TileLogoView: View {
     let text: String
