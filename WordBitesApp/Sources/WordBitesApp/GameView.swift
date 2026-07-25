@@ -20,6 +20,7 @@ struct GameView: View {
                         score: viewModel.score,
                         wordCount: viewModel.foundWords.count,
                         timeRemaining: viewModel.timeRemaining,
+                        elapsedSeconds: viewModel.elapsedSeconds,
                         onBackToHome: onBackToHome,
                         onBackToSolver: viewModel.quitGame
                     )

@@ -34,6 +34,17 @@ final class SolvabilityCheckerTests: XCTestCase {
         XCTAssertTrue(checker.isSolvable(deal))
     }
 
+    func testTileSolvableThroughOnlyOneLetterOfADouble() {
+        // The dictionary only has "hat" -- reachable using just the double
+        // tile's second letter (H) alongside the two singles, even though
+        // the double's first letter (C) never appears in any valid word.
+        let checker = makeChecker(words: ["hat"])
+        let doubles = [DoubleTile(firstLetter: "c", secondLetter: "h", orientation: .horizontal)]
+        let singles = ["a", "t"].map { SingleTile(letter: Character($0)) }
+        let deal = Deal(singleTiles: singles, doubleTiles: doubles)
+        XCTAssertTrue(checker.isSolvable(deal), "the double tile's H alone should combine with A and T to form HAT")
+    }
+
     func testReversedBigramOrderDoesNotCount() {
         // Dictionary only has "chat", but the tile is "HC" not "CH" -- fixed
         // reading order means it can't be flipped to spell "CHAT".

@@ -7,10 +7,12 @@ import Foundation
 /// grid and re-combined freely during the timer rather than solving one
 /// static layout): a deal is solvable iff every one of its 11 tiles can
 /// participate in at least one valid dictionary word formed by concatenating
-/// some ordered subset of the deal's tiles. Double tiles contribute both
-/// letters in their fixed reading order; word length must fall within the
-/// dictionary's minimum and the longest line the board supports (9, since
-/// the board is 8 wide x 9 long).
+/// some ordered subset of the deal's tiles. A double tile may contribute
+/// both letters together (fixed reading order, never reversed) or just one
+/// of its two letters alone — the board is 2D, so a double tile's two cells
+/// can land in two different physical lines, each letter independently
+/// usable. Word length must fall within the dictionary's minimum and the
+/// longest line the board supports (9, since the board is 8 wide x 9 long).
 public struct SolvabilityChecker: Sendable {
     public static let maxWordLength = max(Board.columnCount, Board.rowCount)
 
@@ -46,20 +48,38 @@ public struct SolvabilityChecker: Sendable {
         guard current.count < Self.maxWordLength else { return false }
 
         for i in tiles.indices where !used[i] {
-            let candidate = current + String(tiles[i].letters)
-            guard candidate.count <= Self.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
-
             used[i] = true
-            let found = search(
-                current: candidate,
-                usedRequiredTile: usedRequiredTile || i == requiredIndex,
-                tiles: tiles,
-                requiredIndex: requiredIndex,
-                used: &used
-            )
+            for extension_ in tileExtensions(for: tiles[i]) {
+                let candidate = current + extension_
+                guard candidate.count <= Self.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
+
+                let found = search(
+                    current: candidate,
+                    usedRequiredTile: usedRequiredTile || i == requiredIndex,
+                    tiles: tiles,
+                    requiredIndex: requiredIndex,
+                    used: &used
+                )
+                if found { used[i] = false; return true }
+            }
             used[i] = false
-            if found { return true }
         }
         return false
+    }
+
+    /// The ways a single tile can extend a candidate string: a single tile
+    /// offers only its one letter; a double tile offers both letters
+    /// together (in fixed order) or either letter alone.
+    private func tileExtensions(for tile: Tile) -> [String] {
+        switch tile {
+        case .single(let single):
+            return [String(single.letter)]
+        case .double(let double):
+            return [
+                String([double.firstLetter, double.secondLetter]),
+                String(double.firstLetter),
+                String(double.secondLetter)
+            ]
+        }
     }
 }

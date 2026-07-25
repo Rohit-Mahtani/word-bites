@@ -21,8 +21,29 @@ final class WordFinderTests: XCTestCase {
             .single(SingleTile(letter: "t"))
         ]
         let results = finder.allPossibleWords(from: tiles)
-        XCTAssertTrue(results.contains("CHAT"))
-        XCTAssertFalse(results.contains("HAT"), "the double tile can't be split to expose just H")
+        XCTAssertTrue(results.contains("CHAT"), "both letters together, in fixed order")
+        // The board is 2D: a double tile's two cells can land in two
+        // different physical lines (e.g. the C in a horizontal word, the H
+        // jutting into an adjacent row unused by that word), so a live round
+        // can legitimately score HAT using just this tile's H. The solver
+        // must find it too, or it silently under-reports real, scoreable words.
+        XCTAssertTrue(results.contains("HAT"), "the double tile's second letter alone is a legitimate contribution")
+    }
+
+    func testDoubleTileLetterUsableIndividually() {
+        // Same double tile (C/H) combined with the same remaining tiles (A, T)
+        // can spell two different complete words depending on which single
+        // letter of the double gets used — CAT via the first letter alone,
+        // HAT via the second letter alone — never both at once (that tile is
+        // only used once per word).
+        let finder = makeFinder(words: ["cat", "hat"])
+        let tiles: [Tile] = [
+            .double(DoubleTile(firstLetter: "c", secondLetter: "h", orientation: .horizontal)),
+            .single(SingleTile(letter: "a")),
+            .single(SingleTile(letter: "t"))
+        ]
+        let results = finder.allPossibleWords(from: tiles)
+        XCTAssertEqual(results, ["CAT", "HAT"])
     }
 
     func testEachTileUsedAtMostOncePerWord() {

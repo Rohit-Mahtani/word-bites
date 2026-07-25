@@ -10,6 +10,7 @@ struct HUDView: View {
     let score: Int
     let wordCount: Int
     let timeRemaining: Int
+    let elapsedSeconds: Int
     let onBackToHome: () -> Void
     let onBackToSolver: () -> Void
 
@@ -22,13 +23,16 @@ struct HUDView: View {
             Spacer()
             hudItem(label: "Words", value: "\(wordCount)")
 
-            if mode == .timed {
-                Spacer()
+            Spacer()
+            switch mode {
+            case .timed:
                 hudItem(
                     label: "Time",
                     value: "\(max(0, timeRemaining))",
                     tint: timeRemaining <= 15 ? Theme.error : Theme.chromeText
                 )
+            case .untimed:
+                hudItem(label: "Time", value: Self.formatElapsed(elapsedSeconds))
             }
 
             Spacer()
@@ -51,6 +55,10 @@ struct HUDView: View {
                 .background(Theme.chromeText.opacity(0.12))
                 .clipShape(Circle())
         }
+    }
+
+    private static func formatElapsed(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private func hudItem(label: String, value: String, tint: Color = Theme.chromeText) -> some View {

@@ -15,6 +15,15 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
         )
     }
 
+    private func containsFullLetterSet(_ letters: [Character], in pool: [Character]) -> Bool {
+        var counts = pool.reduce(into: [Character: Int]()) { $0[$1, default: 0] += 1 }
+        for letter in letters {
+            guard let count = counts[letter], count > 0 else { return false }
+            counts[letter] = count - 1
+        }
+        return true
+    }
+
     func testZeroPotentialStillSatisfiesHardConstraintsAndSolvability() throws {
         let generator = makeGenerator()
         for _ in 0..<5 {
@@ -24,41 +33,65 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
         }
     }
 
-    func testHighPotentialIncludesAnAnchorLetter() throws {
-        let generator = makeGenerator()
-        for _ in 0..<5 {
-            let deal = try generator.generateDeal(potential: 1, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
-            let singleLetters = Set(deal.singleTiles.map(\.letter))
-            XCTAssertTrue(
-                singleLetters.contains("C") || singleLetters.contains("T"),
-                "expected the planters (C) or maligners (T) anchor among the singles, got \(singleLetters)"
+    /// Whitebox: every anchor word's letters are covered exactly once by
+    /// singles + overflow doubles, and both slot counts fit the deal's
+    /// fixed tile counts (6 singles, 5 doubles) with room left for hooks.
+    func testAnchorAssignmentCoversEveryAnchorLetterExactlyOnce() {
+        for anchor in HighScoreBoardGenerator.anchorWords {
+            let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor)
+            XCTAssertEqual(
+                assignment.singleAnchorLetters + assignment.overflowAnchorLetters,
+                anchor.letters,
+                "singles + overflow should reconstruct \(String(anchor.letters)) exactly, in order"
             )
+            XCTAssertEqual(assignment.singleAnchorLetters.count + assignment.hookSinglesNeeded, Deal.singleTileCount)
+            XCTAssertEqual(assignment.overflowAnchorLetters.count + assignment.hookDoublesNeeded, Deal.doubleTileCount)
+            XCTAssertLessThanOrEqual(assignment.singleAnchorLetters.count, Deal.singleTileCount)
+            XCTAssertLessThanOrEqual(assignment.overflowAnchorLetters.count, Deal.doubleTileCount)
         }
     }
 
-    func testHighPotentialNeverFusesTwoHookLettersIntoOneDouble() throws {
-        let planters: Set<Character> = ["C", "G", "I", "K", "D", "O"]
-        let maligners: Set<Character> = ["T", "C", "O", "H", "D", "K"]
+    /// Black-box: at potential 1, the deal's full 16-letter multiset always
+    /// contains at least one anchor word's complete letter set.
+    func testHighPotentialDealsContainAnAnchorWordsFullLetterSet() throws {
         let generator = makeGenerator()
-
         for _ in 0..<8 {
             let deal = try generator.generateDeal(potential: 1, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
-            let singleLetters = Set(deal.singleTiles.map(\.letter))
-
-            // Only maligners' extras include T+H together; only planters'
-            // extras include I. Skip the rare case we can't tell which
-            // archetype actually won, rather than guess and risk a flaky
-            // false failure.
-            let looksLikeMaligners = singleLetters.contains("T") && singleLetters.contains("H")
-            let looksLikePlanters = singleLetters.contains("I") && !looksLikeMaligners
-            guard looksLikeMaligners || looksLikePlanters else { continue }
-
-            let activeHookLetters = looksLikeMaligners ? maligners : planters
-            for double in deal.doubleTiles {
-                let pair: Set<Character> = [double.firstLetter, double.secondLetter]
-                let fusesHookLetters = pair.count == 2 && pair.isSubset(of: activeHookLetters)
-                XCTAssertFalse(fusesHookLetters, "double tile \(double.text) fuses two hook letters together")
+            let allLetters = deal.allTiles.flatMap(\.letters)
+            let matchesAnAnchor = HighScoreBoardGenerator.anchorWords.contains {
+                containsFullLetterSet($0.letters, in: allLetters)
             }
+            XCTAssertTrue(matchesAnAnchor, "expected the deal's letters to fully contain an anchor word, got \(allLetters)")
+        }
+    }
+
+    /// Integration: for a potential-1 deal, at least one anchor word whose
+    /// full letter set is present must actually be discoverable by
+    /// WordFinder — proving an anchor word isn't just physically present as
+    /// loose letters but genuinely assemblable and solver-discoverable
+    /// (this only holds now that WordFinder understands partial double-tile
+    /// usage). Checking *any* matching anchor rather than just the first is
+    /// deliberate: incidental hook letters can coincidentally satisfy more
+    /// than one anchor's raw letter multiset (e.g. an ALIGNERS deal whose
+    /// random hook doubles happen to also include a P and a T), but only
+    /// the anchor the generator actually built around has its letters
+    /// isolated onto dedicated tiles — a coincidental match on a *different*
+    /// anchor's multiset isn't guaranteed to be tile-reconstructable, and
+    /// asserting on it specifically would make this test flaky.
+    func testAnchorWordIsDiscoverableByWordFinder() throws {
+        let generator = makeGenerator()
+        for _ in 0..<8 {
+            let deal = try generator.generateDeal(potential: 1, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
+            let allLetters = deal.allTiles.flatMap(\.letters)
+            let matchingAnchors = HighScoreBoardGenerator.anchorWords.filter { containsFullLetterSet($0.letters, in: allLetters) }
+            XCTAssertFalse(matchingAnchors.isEmpty, "deal at potential 1 didn't contain any anchor word's full letter set")
+
+            let words = Self.wordFinder.allPossibleWords(from: deal.allTiles)
+            let discoverableSpellings = matchingAnchors.map { String($0.letters) }
+            XCTAssertTrue(
+                discoverableSpellings.contains(where: words.contains),
+                "expected one of \(Set(discoverableSpellings)) to be discoverable by WordFinder from its own generated deal"
+            )
         }
     }
 

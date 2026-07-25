@@ -3,39 +3,81 @@ import Foundation
 /// Generates deals biased toward high scoring potential rather than pure
 /// randomness. At `potential == 0` this behaves exactly like
 /// `BoardGenerator` (fully random, still respecting every hard constraint).
-/// At `potential == 1` it strongly favors the "anchor + disconnected hook
-/// letters" board shapes that produce real high-scoring rounds — an anchor
-/// consonant (C or T) paired with several other single letters that each
-/// support many common suffix hooks (-ERS, -INGS, -LTERS, -NTERS, ...)
-/// instead of being pre-combined into double tiles with each other.
+/// At `potential == 1` it strongly favors "anchor word" board shapes that
+/// produce real high-scoring rounds: the deal is guaranteed to contain every
+/// letter of a literal spellable word (e.g. PLANTERS), so a player can
+/// always assemble that complete word, plus extra "hook" letters around it
+/// for forming many more words from the anchor's fragments.
 public struct HighScoreBoardGenerator: Sendable {
     public enum GenerationError: Error {
         case exceededMaxAttempts
     }
 
-    private struct Archetype {
-        let anchor: Character
-        let extras: [Character]
+    /// A literal word the deal can guarantee is spellable, and the one
+    /// orientation that spelling assembles in (an 8-letter word fits either
+    /// way on this board, but a 9-letter word only fits reading down a
+    /// 9-row column, never across an 8-column row).
+    struct AnchorWord: Sendable {
+        let letters: [Character]
+        let orientation: TileOrientation
     }
 
-    // "Planters" (C-anchor) and "maligners" (T-anchor) — see project notes.
-    private static let archetypes: [Archetype] = [
-        Archetype(anchor: "C", extras: ["G", "I", "K", "D", "O"]),
-        Archetype(anchor: "T", extras: ["C", "O", "H", "D", "K"])
+    // PLANTERS works either way the board is read; MALIGNERS (9 letters)
+    // only fits vertically; ALIGNERS (8 letters, drops the M) is the
+    // horizontal fallback for that same letter family. Picked uniformly,
+    // so PLANTERS ends up chosen ~50% of the time the anchor path is taken.
+    static let anchorWords: [AnchorWord] = [
+        AnchorWord(letters: Array("PLANTERS"), orientation: .horizontal),
+        AnchorWord(letters: Array("PLANTERS"), orientation: .vertical),
+        AnchorWord(letters: Array("ALIGNERS"), orientation: .horizontal),
+        AnchorWord(letters: Array("MALIGNERS"), orientation: .vertical)
     ]
+
+    /// How an anchor word's letters map onto tile slots: as many letters as
+    /// fit ride on their own single tile; any beyond the 6 single-tile slots
+    /// each get a dedicated double tile (paired with one hook letter). A
+    /// double tile can always contribute just one of its two letters to a
+    /// word (see `WordFinder`), so which letter overflows and how its
+    /// double is oriented doesn't affect whether the anchor word is still
+    /// fully assemblable.
+    struct AnchorAssignment {
+        let singleAnchorLetters: [Character]
+        let overflowAnchorLetters: [Character]
+        let hookSinglesNeeded: Int
+        let hookDoublesNeeded: Int
+    }
+
+    static func anchorAssignment(for anchor: AnchorWord) -> AnchorAssignment {
+        let singleCount = min(anchor.letters.count, Deal.singleTileCount)
+        let singleAnchorLetters = Array(anchor.letters.prefix(singleCount))
+        let overflowAnchorLetters = Array(anchor.letters.suffix(from: singleCount))
+        return AnchorAssignment(
+            singleAnchorLetters: singleAnchorLetters,
+            overflowAnchorLetters: overflowAnchorLetters,
+            hookSinglesNeeded: Deal.singleTileCount - singleAnchorLetters.count,
+            hookDoublesNeeded: Deal.doubleTileCount - overflowAnchorLetters.count
+        )
+    }
 
     private let bigramPool: BigramPool
     private let solvabilityChecker: SolvabilityChecker
     private let wordFinder: WordFinder
+    private let hookLetterSource: any HookLetterSource
 
-    public init(bigramPool: BigramPool, solvabilityChecker: SolvabilityChecker, wordFinder: WordFinder) {
+    public init(
+        bigramPool: BigramPool,
+        solvabilityChecker: SolvabilityChecker,
+        wordFinder: WordFinder,
+        hookLetterSource: (any HookLetterSource)? = nil
+    ) {
         self.bigramPool = bigramPool
         self.solvabilityChecker = solvabilityChecker
         self.wordFinder = wordFinder
+        self.hookLetterSource = hookLetterSource ?? FrequencyHookLetterSource(bigramPool: bigramPool)
     }
 
     /// Generates a deal. `potential` (clamped to 0...1) controls both how
-    /// strongly candidates are biased toward the archetype shapes and how
+    /// strongly candidates are biased toward an anchor-word shape and how
     /// many candidates are evaluated (by total possible score) before
     /// keeping the best one — so higher potential costs more time but
     /// produces a better board.
@@ -69,9 +111,9 @@ public struct HighScoreBoardGenerator: Sendable {
 
     private func generateCandidate(biasStrength: Double, maxAttempts: Int) throws -> Deal {
         var rng = SystemRandomNumberGenerator()
-        let useArchetype = Double.random(in: 0...1, using: &rng) < biasStrength
+        let useAnchor = Double.random(in: 0...1, using: &rng) < biasStrength
         for _ in 0..<maxAttempts {
-            let deal = useArchetype ? generateArchetypeCandidate(using: &rng) : generatePlainCandidate(using: &rng)
+            guard let deal = useAnchor ? generateAnchorCandidate(using: &rng) : generatePlainCandidate(using: &rng) else { continue }
             if deal.satisfiesHardConstraints, solvabilityChecker.isSolvable(deal) {
                 return deal
             }
@@ -91,32 +133,39 @@ public struct HighScoreBoardGenerator: Sendable {
         return Deal(singleTiles: singles, doubleTiles: doubles)
     }
 
-    /// Forces the anchor + as many extra hook letters as fit into the 6
-    /// single-tile slots, filling any remaining slots normally. Doubles are
-    /// still sampled from the ordinary bigram pool, but reject a pairing
-    /// that would fuse two of the forced hook letters together — the whole
-    /// point of the archetype is that those letters stay independently
-    /// playable, not pre-combined into one immovable tile.
-    private func generateArchetypeCandidate(using rng: inout some RandomNumberGenerator) -> Deal {
-        let archetype = Self.archetypes.randomElement(using: &rng)!
-        let forced = Array(([archetype.anchor] + archetype.extras).prefix(Deal.singleTileCount))
-        var singleLetters = forced
-        while singleLetters.count < Deal.singleTileCount {
-            singleLetters.append(LetterFrequency.sample(using: &rng))
-        }
-        let singles = singleLetters.map { SingleTile(letter: $0) }
+    /// Builds a deal guaranteed to contain a randomly-chosen anchor word's
+    /// full letter set: the first slice rides on single tiles, any overflow
+    /// each rides in its own double tile paired with a hook letter, and the
+    /// remaining doubles/singles are filled from `hookLetterSource`.
+    private func generateAnchorCandidate(using rng: inout some RandomNumberGenerator) -> Deal? {
+        guard let anchor = Self.anchorWords.randomElement(using: &rng) else { return nil }
+        let assignment = Self.anchorAssignment(for: anchor)
+        let anchorLetterSet = Set(anchor.letters)
 
-        let forcedSet = Set(forced)
-        let doubles = (0..<Deal.doubleTileCount).map { _ -> DoubleTile in
-            var bigram = bigramPool.sample(using: &rng)
-            var guardCount = 0
-            while forcedSet.contains(bigram.first), forcedSet.contains(bigram.second), guardCount < 50 {
-                bigram = bigramPool.sample(using: &rng)
-                guardCount += 1
-            }
+        let hookSingles = hookLetterSource.candidateSingleLetters(
+            count: assignment.hookSinglesNeeded, anchorLetters: anchorLetterSet, using: &rng
+        )
+        let hookBigrams = hookLetterSource.candidateBigrams(
+            count: assignment.hookDoublesNeeded, anchorLetters: anchorLetterSet, using: &rng
+        )
+        guard hookSingles.count == assignment.hookSinglesNeeded, hookBigrams.count == assignment.hookDoublesNeeded else {
+            return nil
+        }
+
+        let singles = (assignment.singleAnchorLetters + hookSingles).map { SingleTile(letter: $0) }
+
+        let overflowDoubles = assignment.overflowAnchorLetters.map { anchorLetter -> DoubleTile in
+            let hookLetter = LetterFrequency.sample(using: &rng)
+            let orientation: TileOrientation = Bool.random(using: &rng) ? .horizontal : .vertical
+            return Bool.random(using: &rng)
+                ? DoubleTile(firstLetter: anchorLetter, secondLetter: hookLetter, orientation: orientation)
+                : DoubleTile(firstLetter: hookLetter, secondLetter: anchorLetter, orientation: orientation)
+        }
+        let hookDoubles = hookBigrams.map { bigram -> DoubleTile in
             let orientation: TileOrientation = Bool.random(using: &rng) ? .horizontal : .vertical
             return DoubleTile(firstLetter: bigram.first, secondLetter: bigram.second, orientation: orientation)
         }
-        return Deal(singleTiles: singles, doubleTiles: doubles)
+
+        return Deal(singleTiles: singles, doubleTiles: (overflowDoubles + hookDoubles).shuffled(using: &rng))
     }
 }

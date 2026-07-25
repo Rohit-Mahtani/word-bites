@@ -23,11 +23,13 @@ final class GameViewModel: ObservableObject {
     static let roundSeconds = 80
 
     @Published private(set) var mode: GameMode = .timed
+    private(set) var boardSource: BoardSource = .random
     @Published private(set) var board = Board()
     @Published private(set) var tiles: [Tile] = []
     @Published private(set) var placements: [UUID: Placement] = [:]
     @Published private(set) var score = 0
     @Published private(set) var timeRemaining = GameViewModel.roundSeconds
+    @Published private(set) var elapsedSeconds = 0
     @Published private(set) var roundOver = false
     @Published private(set) var isDealing = true
     @Published private(set) var loadError: String?
@@ -41,6 +43,7 @@ final class GameViewModel: ObservableObject {
     private var dictionary: WordDictionary?
     private var wordFinder: WordFinder?
     private var generator: HighScoreBoardGenerator?
+    private var fallbackGenerator: BoardGenerator?
     private var loadingTask: Task<Void, Never>?
     private var dealingTask: Task<Void, Never>?
     private var timer: Timer?
@@ -66,11 +69,13 @@ final class GameViewModel: ObservableObject {
             let wordFinder = WordFinder(dictionary: dictionary)
             self.dictionary = dictionary
             self.wordFinder = wordFinder
+            let solvabilityChecker = SolvabilityChecker(dictionary: dictionary)
             self.generator = HighScoreBoardGenerator(
                 bigramPool: bigramPool,
-                solvabilityChecker: SolvabilityChecker(dictionary: dictionary),
+                solvabilityChecker: solvabilityChecker,
                 wordFinder: wordFinder
             )
+            self.fallbackGenerator = BoardGenerator(bigramPool: bigramPool, solvabilityChecker: solvabilityChecker)
         } catch {
             loadError = "Couldn't load the dictionary: \(error.localizedDescription)"
         }
@@ -82,6 +87,7 @@ final class GameViewModel: ObservableObject {
     /// random, 1 strongly biases toward the high-scoring board archetypes.
     func startRound(mode: GameMode, scoringPotential: Double) {
         self.mode = mode
+        self.boardSource = .random
         isDealing = true
         timer?.invalidate()
         toastDismissTask?.cancel()
@@ -95,11 +101,17 @@ final class GameViewModel: ObservableObject {
         dealingTask?.cancel()
         dealingTask = Task {
             await loadingTask?.value
-            guard let generator else { return }
-            let deal = try? await Task.detached(priority: .userInitiated) {
-                try generator.generateDeal(potential: scoringPotential)
+            guard let generator, let fallbackGenerator else { return }
+            let deal = await Task.detached(priority: .userInitiated) { () -> Deal? in
+                if let deal = try? generator.generateDeal(potential: scoringPotential) { return deal }
+                return try? fallbackGenerator.generateDeal()
             }.value
-            guard !Task.isCancelled, let deal else { return }
+            guard !Task.isCancelled else { return }
+            guard let deal else {
+                isDealing = false
+                loadError = "Couldn't generate a board this time — please try again."
+                return
+            }
             applyNewDeal(deal)
         }
     }
@@ -110,6 +122,7 @@ final class GameViewModel: ObservableObject {
     /// no-touching scatter every board uses; only the letters are custom.
     func startRound(mode: GameMode, customDeal: Deal) {
         self.mode = mode
+        self.boardSource = .custom
         isDealing = true
         timer?.invalidate()
         toastDismissTask?.cancel()
@@ -127,6 +140,7 @@ final class GameViewModel: ObservableObject {
         foundWords = []
         score = 0
         timeRemaining = Self.roundSeconds
+        elapsedSeconds = 0
         roundOver = false
 
         let scattered = Self.scatterTiles(tiles)
@@ -138,17 +152,23 @@ final class GameViewModel: ObservableObject {
 
         isDealing = false
 
-        if mode == .timed {
-            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.tick() }
-            }
+        // Runs in both modes: timed counts down to zero and ends the round;
+        // untimed just counts up as an elapsed-time stopwatch, with no
+        // auto-finish (the round only ends via quit/solver, same as today).
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
         }
     }
 
     private func tick() {
-        guard timeRemaining > 0 else { return }
-        timeRemaining -= 1
-        if timeRemaining == 0 { finishRound() }
+        switch mode {
+        case .timed:
+            guard timeRemaining > 0 else { return }
+            timeRemaining -= 1
+            if timeRemaining == 0 { finishRound() }
+        case .untimed:
+            elapsedSeconds += 1
+        }
     }
 
     /// Ends the round early (the "Quit Game" action) and moves to the
@@ -162,7 +182,7 @@ final class GameViewModel: ObservableObject {
         roundOver = true
         timer?.invalidate()
         timer = nil
-        statsStore.record(score: score, wordCount: foundWords.count)
+        statsStore.record(score: score, wordCount: foundWords.count, category: BoardCategory(mode: mode, source: boardSource))
         computeSolverWords()
     }
 
@@ -195,11 +215,47 @@ final class GameViewModel: ObservableObject {
         let candidate = Placement(tileID: tileID, origin: origin, direction: previous.direction)
         if board.place(tile, at: candidate) {
             placements[tileID] = candidate
+        } else if let nearby = nearestFreePlacement(for: tile, near: origin, direction: previous.direction),
+                  board.place(tile, at: nearby) {
+            // Dropped on top of another tile (or off the edge) -- rather
+            // than snapping all the way back to where the drag started,
+            // land on the closest open cell so a slightly-off drop still
+            // goes roughly where the player meant it to.
+            placements[tileID] = nearby
         } else {
             board.place(tile, at: previous)
         }
 
         scanForNewWords()
+    }
+
+    /// Expanding-ring search around `origin` (the attempted drop point) for
+    /// the closest cell(s) where `tile` could actually land, respecting its
+    /// fixed `direction`. Candidates within each ring are checked in true
+    /// Euclidean-distance order so ties within a ring still resolve to the
+    /// visually closest spot. Returns `nil` only if the entire board is
+    /// full, which can't happen with just 11 tiles on 72 cells.
+    private func nearestFreePlacement(for tile: Tile, near origin: Position, direction: TileOrientation) -> Placement? {
+        let maxRadius = max(Board.columnCount, Board.rowCount)
+        for radius in 1...maxRadius {
+            var ring: [Position] = []
+            for dc in -radius...radius {
+                for dr in -radius...radius {
+                    guard max(abs(dc), abs(dr)) == radius else { continue }
+                    ring.append(Position(column: origin.column + dc, row: origin.row + dr))
+                }
+            }
+            ring.sort { a, b in
+                let da = pow(Double(a.column - origin.column), 2) + pow(Double(a.row - origin.row), 2)
+                let db = pow(Double(b.column - origin.column), 2) + pow(Double(b.row - origin.row), 2)
+                return da < db
+            }
+            for candidate in ring where Self.isInBoardBounds(candidate) {
+                let placement = Placement(tileID: tile.id, origin: candidate, direction: direction)
+                if board.canPlace(tile, at: placement) { return placement }
+            }
+        }
+        return nil
     }
 
     func placement(for tileID: UUID) -> Placement? { placements[tileID] }

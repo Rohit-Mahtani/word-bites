@@ -12,8 +12,13 @@ public struct WordFinder: Sendable {
     }
 
     /// All distinct valid words (3-9 letters) formable by concatenating some
-    /// ordered subset of `tiles`, each tile used at most once per word,
-    /// double tiles contributing both letters in their fixed reading order.
+    /// ordered subset of `tiles`, each tile used at most once per word. A
+    /// double tile contributes either both letters together (fixed reading
+    /// order, never reversed) or just one of its two letters alone — the
+    /// board is 2D, so a double tile's two cells can land in two different
+    /// physical lines (e.g. one letter in a horizontal word, the other
+    /// jutting into an adjacent row unused by that word), and both letters
+    /// individually usable this way are legitimate, independent contributions.
     public func allPossibleWords(from tiles: [Tile]) -> Set<String> {
         var found = Set<String>()
         var used = Array(repeating: false, count: tiles.count)
@@ -28,11 +33,29 @@ public struct WordFinder: Sendable {
         guard current.count < SolvabilityChecker.maxWordLength else { return }
 
         for i in tiles.indices where !used[i] {
-            let candidate = current + String(tiles[i].letters)
-            guard candidate.count <= SolvabilityChecker.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
             used[i] = true
-            search(tiles: tiles, used: &used, current: candidate, found: &found)
+            for extension_ in tileExtensions(for: tiles[i]) {
+                let candidate = current + extension_
+                guard candidate.count <= SolvabilityChecker.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
+                search(tiles: tiles, used: &used, current: candidate, found: &found)
+            }
             used[i] = false
+        }
+    }
+
+    /// The ways a single tile can extend a candidate string: a single tile
+    /// offers only its one letter; a double tile offers both letters
+    /// together (in fixed order) or either letter alone.
+    private func tileExtensions(for tile: Tile) -> [String] {
+        switch tile {
+        case .single(let single):
+            return [String(single.letter)]
+        case .double(let double):
+            return [
+                String([double.firstLetter, double.secondLetter]),
+                String(double.firstLetter),
+                String(double.secondLetter)
+            ]
         }
     }
 }

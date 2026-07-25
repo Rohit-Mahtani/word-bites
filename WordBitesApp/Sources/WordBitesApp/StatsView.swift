@@ -4,6 +4,8 @@ struct StatsView: View {
     @ObservedObject var statsStore: StatsStore
     let onBack: () -> Void
 
+    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+
     var body: some View {
         ZStack {
             RadialGradient(
@@ -21,15 +23,17 @@ struct StatsView: View {
                 }
                 Spacer()
 
-                VStack(spacing: 28) {
+                VStack(spacing: 24) {
                     Text("Best Scores")
                         .font(.custom("Georgia-Bold", size: 22))
                         .foregroundColor(Theme.pageText)
 
-                    HStack(spacing: 18) {
-                        statCard(label: "High Score", value: "\(statsStore.highScore)")
-                        statCard(label: "Most Words", value: "\(statsStore.highWordCount)")
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(BoardCategory.allCases, id: \.self) { category in
+                            categoryCard(category)
+                        }
                     }
+                    .frame(maxWidth: 340)
                 }
 
                 Spacer()
@@ -39,18 +43,36 @@ struct StatsView: View {
         }
     }
 
-    private func statCard(label: String, value: String) -> some View {
-        VStack(spacing: 6) {
-            Text(value)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(Theme.chromeText)
-            Text(label.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(1.0)
+    private func categoryCard(_ category: BoardCategory) -> some View {
+        VStack(spacing: 10) {
+            Text(category.displayName.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
                 .foregroundColor(Theme.chromeTextDim)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 2) {
+                Text("\(statsStore.highScore(for: category))")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(Theme.chromeText)
+                Text("High Score")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(Theme.chromeTextDim)
+            }
+
+            VStack(spacing: 2) {
+                Text("\(statsStore.highWordCount(for: category))")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(Theme.chromeText)
+                Text("Most Words")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(Theme.chromeTextDim)
+            }
         }
-        .frame(width: 140, height: 100)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
         .background(
             LinearGradient(colors: [Theme.chrome, Theme.chromeMid], startPoint: .top, endPoint: .bottom)
         )
