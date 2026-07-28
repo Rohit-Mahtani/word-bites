@@ -12,21 +12,32 @@ public struct WordFinder: Sendable {
     }
 
     /// All distinct valid words (3-9 letters) formable by concatenating some
-    /// ordered subset of `tiles`, each tile used at most once per word. A
-    /// double tile contributes either both letters together (fixed reading
-    /// order, never reversed) or just one of its two letters alone — the
-    /// board is 2D, so a double tile's two cells can land in two different
-    /// physical lines (e.g. one letter in a horizontal word, the other
-    /// jutting into an adjacent row unused by that word), and both letters
-    /// individually usable this way are legitimate, independent contributions.
+    /// ordered subset of `tiles`, each tile used at most once per word, in a
+    /// way that's actually assemblable on the physical board. A word is
+    /// always read along one straight line (a row or a column), so this
+    /// runs the search once per line direction and unions the results: in
+    /// the horizontal pass, a horizontal double tile contributes both its
+    /// letters together (its two cells are already adjacent in that row —
+    /// there's no way to use one and not the other) while a vertical double
+    /// can only ever have one of its two cells actually sit in that row (the
+    /// other is in an adjacent row), so it contributes either letter alone,
+    /// never both — and vice versa for the vertical pass.
     public func allPossibleWords(from tiles: [Tile]) -> Set<String> {
         var found = Set<String>()
-        var used = Array(repeating: false, count: tiles.count)
-        search(tiles: tiles, used: &used, current: "", found: &found)
+        for direction in [TileOrientation.horizontal, .vertical] {
+            var used = Array(repeating: false, count: tiles.count)
+            search(tiles: tiles, direction: direction, used: &used, current: "", found: &found)
+        }
         return found
     }
 
-    private func search(tiles: [Tile], used: inout [Bool], current: String, found: inout Set<String>) {
+    private func search(
+        tiles: [Tile],
+        direction: TileOrientation,
+        used: inout [Bool],
+        current: String,
+        found: inout Set<String>
+    ) {
         if current.count >= WordDictionary.minimumWordLength, dictionary.isValidWord(current) {
             found.insert(current)
         }
@@ -34,28 +45,12 @@ public struct WordFinder: Sendable {
 
         for i in tiles.indices where !used[i] {
             used[i] = true
-            for extension_ in tileExtensions(for: tiles[i]) {
+            for extension_ in tiles[i].extensions(forLineDirection: direction) {
                 let candidate = current + extension_
                 guard candidate.count <= SolvabilityChecker.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
-                search(tiles: tiles, used: &used, current: candidate, found: &found)
+                search(tiles: tiles, direction: direction, used: &used, current: candidate, found: &found)
             }
             used[i] = false
-        }
-    }
-
-    /// The ways a single tile can extend a candidate string: a single tile
-    /// offers only its one letter; a double tile offers both letters
-    /// together (in fixed order) or either letter alone.
-    private func tileExtensions(for tile: Tile) -> [String] {
-        switch tile {
-        case .single(let single):
-            return [String(single.letter)]
-        case .double(let double):
-            return [
-                String([double.firstLetter, double.secondLetter]),
-                String(double.firstLetter),
-                String(double.secondLetter)
-            ]
         }
     }
 }

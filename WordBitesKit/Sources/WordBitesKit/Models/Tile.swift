@@ -67,4 +67,25 @@ public enum Tile: Identifiable, Equatable, Sendable {
     }
 
     static let vowels: Set<Character> = ["A", "E", "I", "O", "U"]
+
+    /// The ways this tile can extend a word being read along a line running
+    /// in `lineDirection`. A single tile always offers just its one letter.
+    /// A double tile whose own fixed orientation *matches* the line
+    /// contributes both letters together (its two cells are already
+    /// adjacent within that same line -- there's no way to use one and not
+    /// the other). A double tile *perpendicular* to the line can only ever
+    /// have one of its two cells actually sit in that line (the other cell
+    /// is in an adjacent, uninvolved row/column), so it offers either
+    /// letter alone, never both together.
+    func extensions(forLineDirection lineDirection: TileOrientation) -> [String] {
+        switch self {
+        case .single(let single):
+            return [String(single.letter)]
+        case .double(let double):
+            if double.orientation == lineDirection {
+                return [String([double.firstLetter, double.secondLetter])]
+            }
+            return [String(double.firstLetter), String(double.secondLetter)]
+        }
+    }
 }

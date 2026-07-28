@@ -5,21 +5,31 @@ import Foundation
 /// `BoardGenerator` (fully random, still respecting every hard constraint).
 /// At `potential == 1` it strongly favors "anchor word" board shapes that
 /// produce real high-scoring rounds: the deal is guaranteed to contain every
-/// letter of a literal spellable word (e.g. PLANTERS), so a player can
-/// always assemble that complete word, plus extra "hook" letters around it
-/// for forming many more words from the anchor's fragments.
+/// letter of a literal spellable word (e.g. PLANTERS) plus its critical hook
+/// letter (e.g. C), so a player can always assemble the anchor word and the
+/// large family of related words pro players chain off it, plus extra
+/// "hook" letters around it for forming even more.
 public struct HighScoreBoardGenerator: Sendable {
     public enum GenerationError: Error {
         case exceededMaxAttempts
     }
 
-    /// A literal word the deal can guarantee is spellable, and the one
+    /// A literal word the deal can guarantee is spellable, the one
     /// orientation that spelling assembles in (an 8-letter word fits either
     /// way on this board, but a 9-letter word only fits reading down a
-    /// 9-row column, never across an 8-column row).
+    /// 9-row column, never across an 8-column row), and the extra letters
+    /// that make the anchor actually useful: `criticalHookLetter` is a
+    /// letter outside the anchor's own spelling that's near-mandatory for
+    /// forming the large family of words pro players chain off this anchor
+    /// (e.g. C for PLANTERS, T for ALIGNERS/MALIGNERS) and is always
+    /// guaranteed as its own single tile; `favoredHookLetters` are
+    /// additional letters worth biasing toward when they're known to unlock
+    /// further chains, without being mandatory.
     struct AnchorWord: Sendable {
         let letters: [Character]
         let orientation: TileOrientation
+        let criticalHookLetter: Character
+        let favoredHookLetters: [Character]
     }
 
     // PLANTERS works either way the board is read; MALIGNERS (9 letters)
@@ -27,34 +37,41 @@ public struct HighScoreBoardGenerator: Sendable {
     // horizontal fallback for that same letter family. Picked uniformly,
     // so PLANTERS ends up chosen ~50% of the time the anchor path is taken.
     static let anchorWords: [AnchorWord] = [
-        AnchorWord(letters: Array("PLANTERS"), orientation: .horizontal),
-        AnchorWord(letters: Array("PLANTERS"), orientation: .vertical),
-        AnchorWord(letters: Array("ALIGNERS"), orientation: .horizontal),
-        AnchorWord(letters: Array("MALIGNERS"), orientation: .vertical)
+        AnchorWord(letters: Array("PLANTERS"), orientation: .horizontal, criticalHookLetter: "C", favoredHookLetters: ["G", "D", "K", "O"]),
+        AnchorWord(letters: Array("PLANTERS"), orientation: .vertical, criticalHookLetter: "C", favoredHookLetters: ["G", "D", "K", "O"]),
+        AnchorWord(letters: Array("ALIGNERS"), orientation: .horizontal, criticalHookLetter: "T", favoredHookLetters: []),
+        AnchorWord(letters: Array("MALIGNERS"), orientation: .vertical, criticalHookLetter: "T", favoredHookLetters: [])
     ]
 
-    /// How an anchor word's letters map onto tile slots: as many letters as
-    /// fit ride on their own single tile; any beyond the 6 single-tile slots
-    /// each get a dedicated double tile (paired with one hook letter). A
-    /// double tile can always contribute just one of its two letters to a
-    /// word (see `WordFinder`), so which letter overflows and how its
-    /// double is oriented doesn't affect whether the anchor word is still
-    /// fully assemblable.
+    /// How an anchor word's letters map onto tile slots. One single-tile
+    /// slot is always reserved for the critical hook letter — a single tile
+    /// has no orientation, so it's always alignable with whichever
+    /// direction the anchor word ends up read in, guaranteeing it's never
+    /// stranded on the wrong axis. As many anchor letters as fit in the
+    /// remaining single slots ride there; any beyond that each get a
+    /// dedicated double tile (paired with one hook letter).
     struct AnchorAssignment {
         let singleAnchorLetters: [Character]
         let overflowAnchorLetters: [Character]
-        let hookSinglesNeeded: Int
         let hookDoublesNeeded: Int
     }
 
+    /// The orientation an overflow anchor-letter double must use: opposite
+    /// the anchor's own line direction, so it can contribute just its
+    /// anchor letter to that line without forcing its paired hook letter in
+    /// too (see `generateAnchorCandidate`).
+    static func perpendicularDirection(for anchor: AnchorWord) -> TileOrientation {
+        anchor.orientation == .horizontal ? .vertical : .horizontal
+    }
+
     static func anchorAssignment(for anchor: AnchorWord) -> AnchorAssignment {
-        let singleCount = min(anchor.letters.count, Deal.singleTileCount)
+        let reservedForCritical = 1
+        let singleCount = min(anchor.letters.count, Deal.singleTileCount - reservedForCritical)
         let singleAnchorLetters = Array(anchor.letters.prefix(singleCount))
         let overflowAnchorLetters = Array(anchor.letters.suffix(from: singleCount))
         return AnchorAssignment(
             singleAnchorLetters: singleAnchorLetters,
             overflowAnchorLetters: overflowAnchorLetters,
-            hookSinglesNeeded: Deal.singleTileCount - singleAnchorLetters.count,
             hookDoublesNeeded: Deal.doubleTileCount - overflowAnchorLetters.count
         )
     }
@@ -134,38 +151,61 @@ public struct HighScoreBoardGenerator: Sendable {
     }
 
     /// Builds a deal guaranteed to contain a randomly-chosen anchor word's
-    /// full letter set: the first slice rides on single tiles, any overflow
-    /// each rides in its own double tile paired with a hook letter, and the
-    /// remaining doubles/singles are filled from `hookLetterSource`.
+    /// full letter set plus its critical hook letter: the anchor's own
+    /// letters ride on single tiles (as many as fit) plus one dedicated
+    /// double per overflow letter, the critical hook letter always gets its
+    /// own single tile, and the remaining doubles are filled from
+    /// `hookLetterSource` (occasionally biased toward the anchor's favored
+    /// extra letters).
     private func generateAnchorCandidate(using rng: inout some RandomNumberGenerator) -> Deal? {
         guard let anchor = Self.anchorWords.randomElement(using: &rng) else { return nil }
         let assignment = Self.anchorAssignment(for: anchor)
         let anchorLetterSet = Set(anchor.letters)
 
-        let hookSingles = hookLetterSource.candidateSingleLetters(
-            count: assignment.hookSinglesNeeded, anchorLetters: anchorLetterSet, using: &rng
-        )
         let hookBigrams = hookLetterSource.candidateBigrams(
             count: assignment.hookDoublesNeeded, anchorLetters: anchorLetterSet, using: &rng
         )
-        guard hookSingles.count == assignment.hookSinglesNeeded, hookBigrams.count == assignment.hookDoublesNeeded else {
-            return nil
-        }
+        guard hookBigrams.count == assignment.hookDoublesNeeded else { return nil }
 
-        let singles = (assignment.singleAnchorLetters + hookSingles).map { SingleTile(letter: $0) }
+        let singles = (assignment.singleAnchorLetters + [anchor.criticalHookLetter]).map { SingleTile(letter: $0) }
 
+        // Each overflow anchor letter rides its own double, paired with a
+        // sampled hook letter, oriented PERPENDICULAR to the anchor's line.
+        // That's the only orientation that lets this double contribute just
+        // its anchor letter to the anchor line without also dragging the
+        // hook letter into it — a double oriented parallel to the line
+        // would force both its letters into that same run together,
+        // corrupting the anchor spelling.
+        let perpendicular = Self.perpendicularDirection(for: anchor)
         let overflowDoubles = assignment.overflowAnchorLetters.map { anchorLetter -> DoubleTile in
-            let hookLetter = LetterFrequency.sample(using: &rng)
-            let orientation: TileOrientation = Bool.random(using: &rng) ? .horizontal : .vertical
+            let hookLetter = sampleHookLetter(favoring: anchor.favoredHookLetters, using: &rng)
             return Bool.random(using: &rng)
-                ? DoubleTile(firstLetter: anchorLetter, secondLetter: hookLetter, orientation: orientation)
-                : DoubleTile(firstLetter: hookLetter, secondLetter: anchorLetter, orientation: orientation)
+                ? DoubleTile(firstLetter: anchorLetter, secondLetter: hookLetter, orientation: perpendicular)
+                : DoubleTile(firstLetter: hookLetter, secondLetter: anchorLetter, orientation: perpendicular)
         }
+
+        // Pure hook doubles carry no anchor letters, so their orientation is
+        // unconstrained — occasionally biased toward the anchor family's
+        // favored extra letters instead of a plain dictionary-frequency bigram.
         let hookDoubles = hookBigrams.map { bigram -> DoubleTile in
             let orientation: TileOrientation = Bool.random(using: &rng) ? .horizontal : .vertical
+            if !anchor.favoredHookLetters.isEmpty, Bool.random(using: &rng) {
+                let favored = anchor.favoredHookLetters.randomElement(using: &rng)!
+                let other = LetterFrequency.sample(using: &rng)
+                return Bool.random(using: &rng)
+                    ? DoubleTile(firstLetter: favored, secondLetter: other, orientation: orientation)
+                    : DoubleTile(firstLetter: other, secondLetter: favored, orientation: orientation)
+            }
             return DoubleTile(firstLetter: bigram.first, secondLetter: bigram.second, orientation: orientation)
         }
 
         return Deal(singleTiles: singles, doubleTiles: (overflowDoubles + hookDoubles).shuffled(using: &rng))
+    }
+
+    private func sampleHookLetter(favoring favored: [Character], using rng: inout some RandomNumberGenerator) -> Character {
+        if !favored.isEmpty, Bool.random(using: &rng) {
+            return favored.randomElement(using: &rng)!
+        }
+        return LetterFrequency.sample(using: &rng)
     }
 }

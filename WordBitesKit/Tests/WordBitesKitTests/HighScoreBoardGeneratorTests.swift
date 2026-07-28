@@ -34,8 +34,9 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
     }
 
     /// Whitebox: every anchor word's letters are covered exactly once by
-    /// singles + overflow doubles, and both slot counts fit the deal's
-    /// fixed tile counts (6 singles, 5 doubles) with room left for hooks.
+    /// singles + overflow doubles, exactly one single-tile slot is left over
+    /// (reserved for the critical hook letter), and both slot counts fit the
+    /// deal's fixed tile counts (6 singles, 5 doubles) with room for hooks.
     func testAnchorAssignmentCoversEveryAnchorLetterExactlyOnce() {
         for anchor in HighScoreBoardGenerator.anchorWords {
             let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor)
@@ -44,10 +45,45 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
                 anchor.letters,
                 "singles + overflow should reconstruct \(String(anchor.letters)) exactly, in order"
             )
-            XCTAssertEqual(assignment.singleAnchorLetters.count + assignment.hookSinglesNeeded, Deal.singleTileCount)
+            XCTAssertEqual(
+                assignment.singleAnchorLetters.count + 1, Deal.singleTileCount,
+                "exactly one single-tile slot should be left over for the critical hook letter"
+            )
             XCTAssertEqual(assignment.overflowAnchorLetters.count + assignment.hookDoublesNeeded, Deal.doubleTileCount)
-            XCTAssertLessThanOrEqual(assignment.singleAnchorLetters.count, Deal.singleTileCount)
             XCTAssertLessThanOrEqual(assignment.overflowAnchorLetters.count, Deal.doubleTileCount)
+        }
+    }
+
+    /// The critical hook letter (e.g. C for PLANTERS, T for ALIGNERS/
+    /// MALIGNERS) must always land on its own single tile -- never dropped,
+    /// and never fused into a double, since a single tile is the only slot
+    /// with no orientation constraint at all.
+    func testCriticalHookLetterAlwaysLandsOnItsOwnSingleTile() throws {
+        let generator = makeGenerator()
+        for _ in 0..<8 {
+            let deal = try generator.generateDeal(potential: 1, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
+            let allLetters = deal.allTiles.flatMap(\.letters)
+            let matchingAnchors = HighScoreBoardGenerator.anchorWords.filter { containsFullLetterSet($0.letters, in: allLetters) }
+            XCTAssertFalse(matchingAnchors.isEmpty)
+            let criticalLetters = Set(matchingAnchors.map(\.criticalHookLetter))
+            let hasCriticalSingle = deal.singleTiles.contains { criticalLetters.contains($0.letter) }
+            XCTAssertTrue(hasCriticalSingle, "expected one of \(criticalLetters) as its own single tile")
+        }
+    }
+
+    /// Whitebox, deterministic: the perpendicular direction used for
+    /// overflow anchor-letter doubles is always the opposite of the
+    /// anchor's own line direction. (Verifying this end-to-end from a
+    /// generated deal's tile orientations would be flaky -- a coincidental
+    /// hook letter can randomly match an overflow letter too, e.g. a hook
+    /// double that happens to contain an R when PLANTERS' own overflow
+    /// letters are E/R/S -- so this checks the underlying rule directly
+    /// instead. `testAnchorWordIsDiscoverableByWordFinder` below is the
+    /// true end-to-end proof that the orientation is actually correct in
+    /// practice: if it were wrong, the anchor word wouldn't be discoverable.)
+    func testPerpendicularDirectionIsAlwaysOppositeTheAnchorsOrientation() {
+        for anchor in HighScoreBoardGenerator.anchorWords {
+            XCTAssertNotEqual(HighScoreBoardGenerator.perpendicularDirection(for: anchor), anchor.orientation)
         }
     }
 

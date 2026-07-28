@@ -87,6 +87,24 @@ final class WordFinderTests: XCTestCase {
         XCTAssertTrue(results.contains("HANDLER"), "H + [AN] + D + L + [ER] should combine to HANDLER")
     }
 
+    func testWordNeedingTwoConflictingOrientationDoublesIsNotFound() {
+        // HANDLER needs [AN] and [ER] both contributing their full pair --
+        // only possible if both doubles share the line's own direction. Here
+        // [AN] is vertical and [ER] is horizontal: no single straight line
+        // can use both of them whole at once, so HANDLER must not be found,
+        // even though the old (direction-blind) model would have allowed it.
+        let finder = makeFinder(words: ["handler"])
+        let tiles: [Tile] = [
+            .single(SingleTile(letter: "h")),
+            .double(DoubleTile(firstLetter: "a", secondLetter: "n", orientation: .vertical)),
+            .single(SingleTile(letter: "d")),
+            .single(SingleTile(letter: "l")),
+            .double(DoubleTile(firstLetter: "e", secondLetter: "r", orientation: .horizontal))
+        ]
+        let results = finder.allPossibleWords(from: tiles)
+        XCTAssertFalse(results.contains("HANDLER"), "the two doubles' orientations can never both match one straight line")
+    }
+
     func testRealDictionaryFindsMultipleWordsFromCommonLetters() throws {
         let dictionary = try WordDictionary.loadDefault()
         let finder = WordFinder(dictionary: dictionary)
