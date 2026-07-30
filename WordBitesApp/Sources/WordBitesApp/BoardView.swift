@@ -130,6 +130,14 @@ struct BoardView: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
+                        // Only one tile may be actively dragged at a time --
+                        // each tile has its own independent DragGesture, so
+                        // without this gate, a second finger on a different
+                        // tile would start its own simultaneous drag. Once
+                        // a tile has claimed the active drag, every other
+                        // tile's gesture updates are ignored until it's
+                        // released.
+                        guard draggingTileID == nil || draggingTileID == tile.id else { return }
                         if draggingTileID != tile.id {
                             draggingTileID = tile.id
                             FeedbackPlayer.tilePickedUp()
@@ -142,6 +150,9 @@ struct BoardView: View {
                         )
                     }
                     .onEnded { value in
+                        // Ignore a release from a tile that was never
+                        // granted the active drag (see the guard above).
+                        guard draggingTileID == tile.id else { return }
                         let newTopLeft = CGPoint(
                             x: base.x + value.translation.width,
                             y: base.y + value.translation.height
