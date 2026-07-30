@@ -116,6 +116,16 @@ struct BoardView: View {
         return TileView(tile: tile, cellSize: cellSize, isDragging: isDragging)
             .frame(width: size.width, height: size.height)
             .position(x: base.x + size.width / 2 + offset.width, y: base.y + size.height / 2 + offset.height)
+            // Scoped to just this tile's settled position (`base`, driven by
+            // `placement`) so only the tile that actually moved animates.
+            // Wrapping the view-model mutation itself in `withAnimation`
+            // (the old approach) puts every tile, the HUD, and the board's
+            // own layout into one shared animated transaction -- which both
+            // blocked a new drag gesture on a different tile from being
+            // recognized until that transaction settled, and let unrelated
+            // layout (the board's position) get swept into the same
+            // animation, causing it to visibly jitter.
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: base)
             .zIndex(isDragging ? 10 : 1)
             .gesture(
                 DragGesture()
@@ -138,12 +148,10 @@ struct BoardView: View {
                         )
                         let col = Int((newTopLeft.x / pitch).rounded())
                         let row = Int((newTopLeft.y / pitch).rounded())
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                            viewModel.attemptMove(tileID: tile.id, to: Position(column: col, row: row))
-                            dragOffsets[tile.id] = nil
-                            draggingTileID = nil
-                            dragCandidateOrigin = nil
-                        }
+                        viewModel.attemptMove(tileID: tile.id, to: Position(column: col, row: row))
+                        dragOffsets[tile.id] = nil
+                        draggingTileID = nil
+                        dragCandidateOrigin = nil
                         FeedbackPlayer.tilePlaced()
                     }
             )
