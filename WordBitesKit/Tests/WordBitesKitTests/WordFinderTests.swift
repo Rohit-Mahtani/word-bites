@@ -105,6 +105,30 @@ final class WordFinderTests: XCTestCase {
         XCTAssertFalse(results.contains("HANDLER"), "the two doubles' orientations can never both match one straight line")
     }
 
+    func testWordExceedingHorizontalLineLengthIsNotFoundEvenIfLettersExist() {
+        // Reproduces a reported bug: CHANDLERS is 9 letters, but a
+        // horizontal row is only 8 cells wide. Every letter is technically
+        // available by pulling one letter from each of several different
+        // vertical doubles -- but those doubles are scattered across
+        // different rows in a real layout, so cramming all 9 letters into
+        // one horizontal row is physically impossible no matter how they're
+        // dragged. The solver must not claim it's possible.
+        let finder = makeFinder(words: ["chandlers"])
+        let tiles: [Tile] = [
+            .single(SingleTile(letter: "c")),
+            .single(SingleTile(letter: "n")),
+            .single(SingleTile(letter: "l")),
+            .single(SingleTile(letter: "r")),
+            .single(SingleTile(letter: "s")),
+            .double(DoubleTile(firstLetter: "h", secondLetter: "m", orientation: .vertical)),
+            .double(DoubleTile(firstLetter: "o", secondLetter: "a", orientation: .vertical)),
+            .double(DoubleTile(firstLetter: "d", secondLetter: "g", orientation: .vertical)),
+            .double(DoubleTile(firstLetter: "s", secondLetter: "e", orientation: .vertical))
+        ]
+        let results = finder.allPossibleWords(from: tiles)
+        XCTAssertFalse(results.contains("CHANDLERS"), "9 letters can never fit in an 8-cell-wide horizontal row")
+    }
+
     func testRealDictionaryFindsMultipleWordsFromCommonLetters() throws {
         let dictionary = try WordDictionary.loadDefault()
         let finder = WordFinder(dictionary: dictionary)

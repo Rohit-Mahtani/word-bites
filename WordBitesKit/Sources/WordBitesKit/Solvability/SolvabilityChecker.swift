@@ -15,8 +15,13 @@ import Foundation
 /// other), while a double tile perpendicular to the line can only ever have
 /// one of its two cells actually sit in it, so it contributes either letter
 /// alone, never both. Word length must fall within the dictionary's minimum
-/// and the longest line the board supports (9, since the board is 8 wide x
-/// 9 long).
+/// and whichever line direction it's being read along actually supports: a
+/// horizontal line can be at most as long as the board is wide, a vertical
+/// line at most as long as the board is tall — using the *overall* longest
+/// line for both directions would wrongly let words too long for a
+/// horizontal row get "found" there by stitching together single letters
+/// pulled from several different vertical doubles scattered across
+/// different rows, which can never actually fit in one row.
 public struct SolvabilityChecker: Sendable {
     public static let maxWordLength = max(Board.columnCount, Board.rowCount)
 
@@ -24,6 +29,11 @@ public struct SolvabilityChecker: Sendable {
 
     public init(dictionary: WordDictionary) {
         self.dictionary = dictionary
+    }
+
+    /// The longest word obtainable along a line running in `direction`.
+    static func maxWordLength(for direction: TileOrientation) -> Int {
+        direction == .horizontal ? Board.columnCount : Board.rowCount
     }
 
     public func isSolvable(_ deal: Deal) -> Bool {
@@ -55,13 +65,14 @@ public struct SolvabilityChecker: Sendable {
            dictionary.isValidWord(current) {
             return true
         }
-        guard current.count < Self.maxWordLength else { return false }
+        let limit = Self.maxWordLength(for: direction)
+        guard current.count < limit else { return false }
 
         for i in tiles.indices where !used[i] {
             used[i] = true
             for extension_ in tiles[i].extensions(forLineDirection: direction) {
                 let candidate = current + extension_
-                guard candidate.count <= Self.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
+                guard candidate.count <= limit, dictionary.hasPrefix(candidate) else { continue }
 
                 let found = search(
                     current: candidate,

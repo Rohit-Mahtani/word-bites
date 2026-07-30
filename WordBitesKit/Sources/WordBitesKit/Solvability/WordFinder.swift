@@ -21,7 +21,13 @@ public struct WordFinder: Sendable {
     /// there's no way to use one and not the other) while a vertical double
     /// can only ever have one of its two cells actually sit in that row (the
     /// other is in an adjacent row), so it contributes either letter alone,
-    /// never both — and vice versa for the vertical pass.
+    /// never both — and vice versa for the vertical pass. Each pass is also
+    /// capped at that direction's own longest possible line (the board's
+    /// width for horizontal, its height for vertical) — a word longer than a
+    /// row can hold could otherwise get "found" there by stitching together
+    /// single letters pulled from several different vertical doubles that
+    /// are actually scattered across different rows, which can never
+    /// physically fit in one row.
     public func allPossibleWords(from tiles: [Tile]) -> Set<String> {
         var found = Set<String>()
         for direction in [TileOrientation.horizontal, .vertical] {
@@ -41,13 +47,14 @@ public struct WordFinder: Sendable {
         if current.count >= WordDictionary.minimumWordLength, dictionary.isValidWord(current) {
             found.insert(current)
         }
-        guard current.count < SolvabilityChecker.maxWordLength else { return }
+        let limit = SolvabilityChecker.maxWordLength(for: direction)
+        guard current.count < limit else { return }
 
         for i in tiles.indices where !used[i] {
             used[i] = true
             for extension_ in tiles[i].extensions(forLineDirection: direction) {
                 let candidate = current + extension_
-                guard candidate.count <= SolvabilityChecker.maxWordLength, dictionary.hasPrefix(candidate) else { continue }
+                guard candidate.count <= limit, dictionary.hasPrefix(candidate) else { continue }
                 search(tiles: tiles, direction: direction, used: &used, current: candidate, found: &found)
             }
             used[i] = false
