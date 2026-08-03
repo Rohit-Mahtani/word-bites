@@ -5,7 +5,8 @@ struct WordBitesApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(.light)
+                .buttonStyle(HapticButtonStyle())
                 .onAppear { MusicPlayer.start() }
         }
     }

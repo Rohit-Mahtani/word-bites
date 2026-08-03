@@ -22,6 +22,14 @@ struct ScoreToastView: View {
     // opacity/scale (below) control whether it's actually visible.
     @State private var displayed: ScoreToast?
 
+    // A separate multiplier on top of the show/hide scale, pulsed back to 1
+    // from a slightly-shrunk starting point every time a *new* word arrives
+    // -- including back-to-back words, where `toast` never actually goes
+    // nil. That's what gives each word its own little pop instead of just
+    // the very first one after a period of silence, without introducing any
+    // delay/queueing: the text swap itself is still instant.
+    @State private var popScale: CGFloat = 1
+
     var body: some View {
         HStack(spacing: 6) {
             Text(displayed?.word ?? "")
@@ -39,11 +47,18 @@ struct ScoreToastView: View {
         .clipShape(Capsule())
         .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
         .opacity(toast == nil ? 0 : 1)
-        .scaleEffect(toast == nil ? 0.85 : 1)
+        .scaleEffect((toast == nil ? 0.85 : 1) * popScale)
         .frame(height: 40)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: toast)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: toast == nil)
         .onChange(of: toast) { newValue in
-            if let newValue { displayed = newValue }
+            guard let newValue else { return }
+            displayed = newValue
+            withTransaction(Transaction(animation: nil)) {
+                popScale = 0.86
+            }
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.55)) {
+                popScale = 1
+            }
         }
     }
 }

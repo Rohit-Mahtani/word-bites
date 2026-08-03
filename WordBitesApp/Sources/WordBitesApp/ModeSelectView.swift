@@ -149,7 +149,10 @@ struct SegmentedPill<Value: Hashable>: View {
                     .background(selection == option.value ? Theme.gold : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 9))
                     .contentShape(Rectangle())
-                    .onTapGesture { selection = option.value }
+                    .onTapGesture {
+                        FeedbackPlayer.buttonTapped()
+                        selection = option.value
+                    }
             }
         }
         .padding(3)
