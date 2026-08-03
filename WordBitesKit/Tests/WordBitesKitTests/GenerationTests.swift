@@ -40,4 +40,16 @@ final class BigramPoolTests: XCTestCase {
         let pool = BigramPool(dictionaryWords: [String]())
         XCTAssertTrue(pool.isEmpty)
     }
+
+    func testSameLetterBigramsAreExcluded() {
+        // "BALLOON" contains "LL" and "OO" -- neither should ever be
+        // sampled, since a double tile can never have the same letter on
+        // both halves.
+        let pool = BigramPool(dictionaryWords: ["balloon"])
+        var rng = SeededRNG(seed: 3)
+        for _ in 0..<200 {
+            let (first, second) = pool.sample(using: &rng)
+            XCTAssertNotEqual(first, second)
+        }
+    }
 }

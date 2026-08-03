@@ -36,7 +36,9 @@ struct RootView: View {
                     coordinator.screen = .playing
                 },
                 customBoardStore: customBoardStore,
-                onEditCustomBoard: { coordinator.screen = .customBoard }
+                onEditCustomBoard: { coordinator.screen = .customBoard },
+                mode: $coordinator.lastMode,
+                scoringPotential: $coordinator.lastScoringPotential
             )
 
         case .customBoard:
@@ -48,7 +50,7 @@ struct RootView: View {
         case .playing:
             GameView(
                 viewModel: gameViewModel,
-                onBackToHome: { coordinator.screen = .welcome },
+                onBackToHome: { coordinator.screen = .modeSelect },
                 onRoundFinished: { coordinator.screen = .solver }
             )
 

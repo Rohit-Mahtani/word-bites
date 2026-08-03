@@ -6,9 +6,8 @@ struct ModeSelectView: View {
     let onStart: (GameMode, Double, Deal?) -> Void
     @ObservedObject var customBoardStore: CustomBoardStore
     let onEditCustomBoard: () -> Void
-
-    @State private var mode: GameMode = .timed
-    @State private var scoringPotential: Double = 0
+    @Binding var mode: GameMode
+    @Binding var scoringPotential: Double
 
     private var canPlay: Bool {
         !customBoardStore.isCustomMode || customBoardStore.isComplete

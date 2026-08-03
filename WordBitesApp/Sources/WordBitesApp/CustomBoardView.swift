@@ -8,6 +8,7 @@ import WordBitesKit
 struct CustomBoardView: View {
     @ObservedObject var store: CustomBoardStore
     let onBack: () -> Void
+    @FocusState private var focusedField: CustomBoardFocusField?
 
     var body: some View {
         ZStack {
@@ -36,7 +37,12 @@ struct CustomBoardView: View {
                             sectionHeader("Single Tiles", progress: "\(store.filledSingleCount)/\(store.singles.count)")
                             FlowLayout(spacing: 10) {
                                 ForEach(store.singles.indices, id: \.self) { index in
-                                    LetterInputTile(letter: $store.singles[index].letter)
+                                    LetterInputTile(
+                                        letter: $store.singles[index].letter,
+                                        field: .single(index),
+                                        focusedField: $focusedField,
+                                        onFilled: { advanceFocus(from: .single(index)) }
+                                    )
                                 }
                             }
                         }
@@ -49,7 +55,12 @@ struct CustomBoardView: View {
 
                             VStack(spacing: 14) {
                                 ForEach(store.doubles.indices, id: \.self) { index in
-                                    DoubleTileInput(doubleTile: $store.doubles[index])
+                                    DoubleTileInput(
+                                        doubleTile: $store.doubles[index],
+                                        index: index,
+                                        focusedField: $focusedField,
+                                        onFilled: advanceFocus
+                                    )
                                 }
                             }
                         }
@@ -59,6 +70,10 @@ struct CustomBoardView: View {
             }
             .padding(20)
         }
+    }
+
+    private func advanceFocus(from field: CustomBoardFocusField) {
+        focusedField = store.nextEmptyField(after: field)
     }
 
     private func sectionHeader(_ title: String, progress: String) -> some View {
@@ -77,19 +92,22 @@ struct CustomBoardView: View {
 
 private struct DoubleTileInput: View {
     @Binding var doubleTile: CustomDoubleTile
+    let index: Int
+    var focusedField: FocusState<CustomBoardFocusField?>.Binding
+    let onFilled: (CustomBoardFocusField) -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             Group {
                 if doubleTile.orientation == .horizontal {
                     HStack(spacing: 2) {
-                        LetterInputTile(letter: $doubleTile.firstLetter)
-                        LetterInputTile(letter: $doubleTile.secondLetter)
+                        firstLetterTile
+                        secondLetterTile
                     }
                 } else {
                     VStack(spacing: 2) {
-                        LetterInputTile(letter: $doubleTile.firstLetter)
-                        LetterInputTile(letter: $doubleTile.secondLetter)
+                        firstLetterTile
+                        secondLetterTile
                     }
                 }
             }
@@ -107,5 +125,27 @@ private struct DoubleTileInput: View {
                     .clipShape(Circle())
             }
         }
+    }
+
+    // A double tile's two letters must differ -- rejects a typed letter
+    // that would duplicate the other half.
+    private var firstLetterTile: some View {
+        LetterInputTile(
+            letter: $doubleTile.firstLetter,
+            field: .doubleFirst(index),
+            focusedField: focusedField,
+            isValid: { $0 != doubleTile.secondLetter },
+            onFilled: { onFilled(.doubleFirst(index)) }
+        )
+    }
+
+    private var secondLetterTile: some View {
+        LetterInputTile(
+            letter: $doubleTile.secondLetter,
+            field: .doubleSecond(index),
+            focusedField: focusedField,
+            isValid: { $0 != doubleTile.firstLetter },
+            onFilled: { onFilled(.doubleSecond(index)) }
+        )
     }
 }

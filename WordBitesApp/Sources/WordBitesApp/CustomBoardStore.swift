@@ -13,6 +13,14 @@ struct CustomDoubleTile: Identifiable {
     var orientation: TileOrientation = .horizontal
 }
 
+/// Identifies one of the 16 letter slots (6 singles + 5 doubles x 2) in tab
+/// order, for auto-advancing focus as each is filled in.
+enum CustomBoardFocusField: Hashable {
+    case single(Int)
+    case doubleFirst(Int)
+    case doubleSecond(Int)
+}
+
 /// Holds the player's manually-entered board: 6 single letters + 5 double
 /// tiles (letters + orientation). Lives once at the app root so it survives
 /// navigating back and forth between mode-select and the editor screen.
@@ -51,5 +59,36 @@ final class CustomBoardStore: ObservableObject {
         }
         guard singleTiles.count == singles.count, doubleTiles.count == doubles.count else { return nil }
         return Deal(singleTiles: singleTiles, doubleTiles: doubleTiles)
+    }
+
+    /// All 16 letter slots in tab order: every single, then each double's
+    /// first letter then second letter, in the order they're declared.
+    private var orderedFields: [CustomBoardFocusField] {
+        var fields = singles.indices.map { CustomBoardFocusField.single($0) }
+        for index in doubles.indices {
+            fields.append(.doubleFirst(index))
+            fields.append(.doubleSecond(index))
+        }
+        return fields
+    }
+
+    private func letter(at field: CustomBoardFocusField) -> Character? {
+        switch field {
+        case .single(let index): return singles[index].letter
+        case .doubleFirst(let index): return doubles[index].firstLetter
+        case .doubleSecond(let index): return doubles[index].secondLetter
+        }
+    }
+
+    /// The next field after `field` (wrapping around) that's still empty,
+    /// or nil if every slot is already filled.
+    func nextEmptyField(after field: CustomBoardFocusField) -> CustomBoardFocusField? {
+        let fields = orderedFields
+        guard let index = fields.firstIndex(of: field) else { return nil }
+        for offset in 1...fields.count {
+            let candidate = fields[(index + offset) % fields.count]
+            if letter(at: candidate) == nil { return candidate }
+        }
+        return nil
     }
 }

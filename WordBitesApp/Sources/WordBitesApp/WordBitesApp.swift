@@ -6,6 +6,7 @@ struct WordBitesApp: App {
         WindowGroup {
             RootView()
                 .preferredColorScheme(.dark)
+                .onAppear { MusicPlayer.start() }
         }
     }
 }

@@ -32,7 +32,6 @@ enum Theme {
 
     // Tiles.
     static let tile = Color(hex: 0xF0CFA6)
-    static let tileDouble = Color(hex: 0xE6B980)
     static let tileEdge = Color(hex: 0xC99A66)
     static let ink = Color.black
 

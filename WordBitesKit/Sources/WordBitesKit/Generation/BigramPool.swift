@@ -5,6 +5,9 @@ import Foundation
 /// how often it occurs. Guarantees every double tile is found inside at
 /// least one real word. Build once from a `WordDictionary` and reuse across
 /// rounds — scanning the whole word list on every deal would be wasteful.
+/// Bigrams with the same letter twice (e.g. "LL", "SS") are excluded: a
+/// double tile is a fixed, immovable pair, and having the same letter on
+/// both halves is never allowed.
 public struct BigramPool: Sendable {
     private let counts: [String: Int]
     private let totalCount: Int
@@ -15,7 +18,7 @@ public struct BigramPool: Sendable {
             let chars = Array(word.uppercased())
             guard chars.count >= 2 else { continue }
             for i in 0..<(chars.count - 1) {
-                guard chars[i].isLetter, chars[i + 1].isLetter else { continue }
+                guard chars[i].isLetter, chars[i + 1].isLetter, chars[i] != chars[i + 1] else { continue }
                 let bigram = String([chars[i], chars[i + 1]])
                 counts[bigram, default: 0] += 1
             }

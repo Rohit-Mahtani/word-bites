@@ -141,4 +141,75 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
             XCTAssertGreaterThan(total, 0, "deal at potential \(potential) produced no scoreable words at all")
         }
     }
+
+    func testDoubleTilesNeverHaveTheSameLetterTwice() throws {
+        let generator = makeGenerator()
+        for potential: Double in [0, 0.3, 0.6, 0.9, 1] {
+            for _ in 0..<5 {
+                let deal = try generator.generateDeal(potential: potential, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
+                for double in deal.doubleTiles {
+                    XCTAssertNotEqual(
+                        double.firstLetter, double.secondLetter,
+                        "potential \(potential) produced a double tile with the same letter twice"
+                    )
+                }
+            }
+        }
+    }
+
+    /// The complete critical-letter + full-anchor-word signature (exactly
+    /// what `generateAnchorCandidate` produces) must never appear below max
+    /// potential -- that combo is reserved exclusively for potential == 1.
+    func testSubMaxPotentialNeverProducesTheFullGuaranteeSignature() throws {
+        let generator = makeGenerator()
+        for _ in 0..<15 {
+            let deal = try generator.generateDeal(potential: 0.99, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
+            let singleLetters = deal.singleTiles.map(\.letter).sorted()
+            for anchor in HighScoreBoardGenerator.anchorWords {
+                let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor)
+                let fullSignature = (assignment.singleAnchorLetters + [anchor.criticalHookLetter]).sorted()
+                XCTAssertNotEqual(
+                    singleLetters, fullSignature,
+                    "potential 0.99 should never produce the exact max-only single-tile signature"
+                )
+            }
+        }
+    }
+
+    /// Whitebox: an anchor's bias pool (what `generateHookBiasedCandidate`
+    /// deliberately draws from) never includes its own critical hook letter
+    /// -- that's what keeps the full guarantee combo out of reach below max
+    /// potential. (A coincidental critical letter can still land in one of
+    /// the deal's *non-biased* fallback slots, same as any other letter can
+    /// by chance -- only the deliberate bias excludes it, which is the
+    /// actual guarantee, so this checks the pool directly rather than
+    /// asserting the letter never appears anywhere in a generated deal.)
+    func testHookBiasPoolNeverIncludesTheCriticalLetter() {
+        for anchor in HighScoreBoardGenerator.anchorWords {
+            let biasPool = anchor.letters + anchor.favoredHookLetters
+            XCTAssertFalse(biasPool.contains(anchor.criticalHookLetter))
+        }
+    }
+
+    /// The number of an anchor family's pool letters deliberately biased
+    /// into the deal's singles should scale up with strength.
+    func testHookBiasedCandidateScalesWithStrength() {
+        let generator = makeGenerator()
+        for anchor in HighScoreBoardGenerator.anchorWords {
+            var lowHits = 0
+            var highHits = 0
+            let biasPool = Set(anchor.letters + anchor.favoredHookLetters)
+            for seed in 0..<25 {
+                var lowRng = SeededRNG(seed: UInt64(seed))
+                var highRng = SeededRNG(seed: UInt64(seed))
+                if let lowDeal = generator.generateHookBiasedCandidate(strength: 0.1, using: &lowRng) {
+                    lowHits += lowDeal.singleTiles.filter { biasPool.contains($0.letter) }.count
+                }
+                if let highDeal = generator.generateHookBiasedCandidate(strength: 0.9, using: &highRng) {
+                    highHits += highDeal.singleTiles.filter { biasPool.contains($0.letter) }.count
+                }
+            }
+            XCTAssertGreaterThan(highHits, lowHits, "higher strength should bias in more of the anchor family's letters on average")
+        }
+    }
 }
