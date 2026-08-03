@@ -32,17 +32,20 @@ struct BoardView: View {
 
     private var boardBackground: some View {
         ZStack {
-            CheckerboardView(
-                columns: Board.columnCount,
-                rows: Board.rowCount,
-                cellSize: pitch,
-                colorA: Theme.boardCheckerA,
-                colorB: Theme.boardCheckerB
-            )
+            Theme.boardPanel
             gridLines
         }
         .frame(width: boardWidth, height: boardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        // Approximates the spec's inset shadow (`inset 0 2px 10px
+        // rgba(80,55,20,.2)`) -- SwiftUI has no native inset shadow, so a
+        // soft inward-facing edge stroke stands in for it.
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Theme.dotTextureBase.opacity(0.2), lineWidth: 3)
+                .blur(radius: 3)
+                .mask(RoundedRectangle(cornerRadius: 10))
+        )
     }
 
     private var gridLines: some View {
@@ -58,7 +61,7 @@ struct BoardView: View {
                 path.addLine(to: CGPoint(x: boardWidth, y: y))
             }
         }
-        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        .stroke(Theme.dotTextureBase.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [1, 2]))
     }
 
     /// Highlights the cell(s) the currently-dragged tile would land on if

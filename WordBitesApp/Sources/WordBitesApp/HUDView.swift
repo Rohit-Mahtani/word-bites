@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Slim single-row bar — deliberately compact so the board stays the
-/// visual center of the screen instead of the chrome. Left is a back arrow
-/// to the welcome screen; right is a small "Solver" button that ends the
-/// round early and shows the solver screen (quitGame() drives it via
-/// GameViewModel.roundOver, same as a timed round running out).
+/// The game screen's floating HUD block: a back button and a small "?"
+/// (jumps to the solver early, same action the old "Solver" button had) on
+/// one row, a cream score card below, and a floating time pill to its
+/// right. This whole block floats over the board rather than pushing it
+/// down -- see `GameView`.
 struct HUDView: View {
     let mode: GameMode
     let score: Int
@@ -15,62 +15,69 @@ struct HUDView: View {
     let onBackToSolver: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            BackButton(action: onBackToHome, tint: Theme.chromeText, backgroundOpacity: 0.12)
-
-            Spacer()
-            hudItem(label: "Score", value: "\(score)")
-            Spacer()
-            hudItem(label: "Words", value: "\(wordCount)")
-
-            Spacer()
-            switch mode {
-            case .timed:
-                hudItem(
-                    label: "Time",
-                    value: "\(max(0, timeRemaining))",
-                    tint: timeRemaining <= 15 ? Theme.error : Theme.chromeText
-                )
-            case .untimed:
-                hudItem(label: "Time", value: Self.formatElapsed(elapsedSeconds))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                BackButton(action: onBackToHome, tint: Theme.ink, backgroundOpacity: 0.14)
+                Spacer()
+                helpButton
             }
 
-            Spacer()
-            solverButton
+            VStack(alignment: .leading, spacing: 2) {
+                Text("WORDS: \(wordCount)")
+                    .font(Theme.archivoBold(13))
+                    .tracking(0.6)
+                    .foregroundColor(Theme.textMutedDark)
+                Text("SCORE: \(String(format: "%04d", max(0, score)))")
+                    .font(Theme.archivoBold(26))
+                    .foregroundColor(Theme.ink)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.hudCard)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.16), radius: 9, x: 0, y: 4)
+
+            HStack {
+                Spacer()
+                timePill
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            LinearGradient(colors: [Theme.chrome, Theme.chromeMid, Theme.chromeDeep], startPoint: .top, endPoint: .bottom)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 
-    private var solverButton: some View {
+    private var timePill: some View {
+        let (text, isWarning): (String, Bool) = {
+            switch mode {
+            case .timed:
+                let remaining = max(0, timeRemaining)
+                return (Self.formatSeconds(remaining), remaining <= 15)
+            case .untimed:
+                return (Self.formatSeconds(elapsedSeconds), false)
+            }
+        }()
+        return Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(isWarning ? Theme.error : Theme.hudTimeText)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(Theme.ink.opacity(0.75))
+            .clipShape(Capsule())
+    }
+
+    private var helpButton: some View {
         Button(action: onBackToSolver) {
-            Text("Solver")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(Theme.chromeText)
-                .frame(width: 46, height: 46)
-                .background(Theme.chromeText.opacity(0.12))
+            Text("?")
+                .font(Theme.archivoBold(14))
+                .foregroundColor(Theme.ink)
+                .frame(width: 34, height: 34)
+                .background(Theme.ink.opacity(0.14))
                 .clipShape(Circle())
         }
     }
 
-    private static func formatElapsed(_ seconds: Int) -> String {
+    private static func formatSeconds(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-
-    private func hudItem(label: String, value: String, tint: Color = Theme.chromeText) -> some View {
-        VStack(spacing: 1) {
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .medium))
-                .tracking(1.0)
-                .foregroundColor(Theme.chromeTextDim)
-            Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(tint)
-        }
     }
 }

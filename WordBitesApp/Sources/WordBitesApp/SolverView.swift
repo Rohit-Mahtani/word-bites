@@ -21,65 +21,69 @@ struct SolverView: View {
 
     var body: some View {
         ZStack {
-            RadialGradient(
-                colors: [Theme.pageGlow, Theme.pageDeep],
-                center: .init(x: 0.5, y: -0.1),
-                startRadius: 10,
-                endRadius: 600
-            )
-            .ignoresSafeArea()
+            LinearGradient(colors: [Theme.pageTop, Theme.pageBottom], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
 
             VStack(spacing: 14) {
+                // Back button and the "+" button are the same fixed 36pt
+                // circle, so the Spacers on either side of the title get
+                // equal weight and it lands truly centered -- a wide
+                // "New Game" text button here previously threw that off.
                 HStack {
                     BackButton(action: onBack)
                     Spacer()
                     Text("Solver")
-                        .font(.custom("Georgia-Bold", size: 18))
-                        .foregroundColor(Theme.pageText)
+                        .font(Theme.archivoBold(26))
+                        .foregroundColor(Theme.ink)
                     Spacer()
                     Button(action: onNewGame) {
-                        Text("New Game")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Theme.chromeText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                        Text("+")
+                            .font(Theme.archivoBold(20))
+                            .foregroundColor(Theme.ink)
+                            .frame(width: 36, height: 36)
                             .background(
-                                LinearGradient(colors: [Theme.accent, Theme.accentDeep], startPoint: .top, endPoint: .bottom)
+                                LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
                             )
-                            .clipShape(RoundedRectangle(cornerRadius: 7))
+                            .clipShape(Circle())
                     }
                 }
 
-                VStack(spacing: 2) {
+                VStack(spacing: 4) {
                     Text("Final score: \(score)")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Theme.archivoSemiBold(16))
+                        .foregroundColor(Theme.ink)
                     if !isComputing, !allWords.isEmpty {
                         Text("You found \(score) of \(totalPossiblePoints) possible points")
-                            .font(.system(size: 12))
+                            .font(Theme.archivoMedium(12))
+                            .foregroundColor(Theme.textMutedLight)
                     }
                 }
-                .foregroundColor(Theme.pageTextDim)
 
                 if isComputing {
                     Spacer()
                     ProgressView("Finding every word...")
-                        .tint(Theme.pageText)
-                        .foregroundColor(Theme.pageText)
+                        .tint(Theme.ink)
+                        .foregroundColor(Theme.ink)
                     Spacer()
                 } else if allWords.isEmpty {
                     Spacer()
                     Text("No valid words could be found on this board.")
-                        .foregroundColor(Theme.pageTextDim)
+                        .foregroundColor(Theme.textMutedMid)
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 12) {
                             ForEach(groupedWords, id: \.length) { group in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("\(group.length) LETTERS")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .tracking(1.2)
-                                        .foregroundColor(Theme.pageTextDim)
+                                VStack(alignment: .leading, spacing: 9) {
+                                    HStack(alignment: .lastTextBaseline) {
+                                        Text("\(group.length) Letters")
+                                            .font(Theme.archivoSemiBold(13))
+                                            .foregroundColor(Theme.ink)
+                                        Spacer()
+                                        Text("\(group.words.count) words")
+                                            .font(Theme.archivoMedium(11))
+                                            .foregroundColor(Theme.textMutedLight)
+                                    }
 
                                     FlowLayout(spacing: 6) {
                                         ForEach(group.words, id: \.self) { word in
@@ -87,6 +91,9 @@ struct SolverView: View {
                                         }
                                     }
                                 }
+                                .padding(14)
+                                .background(Theme.cardTranslucent)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
                         }
                         .padding(.bottom, 20)
@@ -100,11 +107,11 @@ struct SolverView: View {
     private func wordChip(_ word: String) -> some View {
         let wasFound = foundWords.contains(word)
         return Text(word)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundColor(wasFound ? Theme.chromeText : Theme.pageText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(wasFound ? Theme.accent : Color.white.opacity(0.1))
-            .clipShape(Capsule())
+            .font(Theme.archivoMedium(12))
+            .foregroundColor(wasFound ? Theme.ink : Theme.textMutedDark)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(wasFound ? AnyShapeStyle(LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color(hex: 0xF0E4CC)))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

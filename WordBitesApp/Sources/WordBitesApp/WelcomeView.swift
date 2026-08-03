@@ -6,47 +6,47 @@ struct WelcomeView: View {
 
     var body: some View {
         ZStack {
-            RadialGradient(
-                colors: [Theme.pageGlow, Theme.pageDeep],
-                center: .init(x: 0.5, y: 0.2),
-                startRadius: 10,
-                endRadius: 500
-            )
-            .ignoresSafeArea()
+            LinearGradient(colors: [Theme.pageTop, Theme.pageBottom], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
 
             VStack(spacing: 34) {
                 Spacer()
 
                 VStack(spacing: 18) {
-                    TileLogoView(text: "ALIGNERS", tileSize: 40, fontSize: 24, spacing: 6)
+                    TileLogoView(text: "ALIGNERS", tileSize: 36, fontSize: 19, spacing: 6)
                     Text("Welcome to Aligners")
-                        .font(.custom("Georgia", size: 16))
-                        .foregroundColor(Theme.pageTextDim)
+                        .font(Theme.archivoMedium(14))
+                        .italic()
+                        .foregroundColor(Theme.textMutedMid)
                 }
 
                 Spacer()
 
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
                     Button(action: onSinglePlayer) {
                         Text("Single Player")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Theme.chromeText)
+                            .font(Theme.archivoMedium(16))
+                            .foregroundColor(Theme.ink)
                             .frame(maxWidth: 260)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 15)
                             .background(
-                                LinearGradient(colors: [Theme.accent, Theme.accentDeep], startPoint: .top, endPoint: .bottom)
+                                LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
                             )
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
 
                     Button(action: onShowStats) {
                         Text("High Scores")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Theme.pageText)
+                            .font(Theme.archivoMedium(16))
+                            .foregroundColor(Theme.textMutedDark)
                             .frame(maxWidth: 260)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .padding(.vertical, 15)
+                            .background(Theme.textMutedDark.opacity(0.06))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Theme.textMutedDark.opacity(0.3), lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }
 

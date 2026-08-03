@@ -25,16 +25,16 @@ struct ScoreToastView: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(displayed?.word ?? "")
-                .font(.custom("Georgia-Bold", size: 18))
+                .font(Theme.archivoSemiBold(16))
             Text(displayed.map { "+\($0.points)" } ?? "")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Theme.pageCheckerA)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Theme.ink.opacity(0.65))
         }
-        .foregroundColor(Theme.chromeText)
+        .foregroundColor(Theme.ink)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            LinearGradient(colors: [Theme.chrome, Theme.chromeMid], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
         )
         .clipShape(Capsule())
         .shadow(color: .black.opacity(0.3), radius: 6, y: 3)

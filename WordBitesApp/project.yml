@@ -20,6 +20,8 @@ targets:
       path: Sources/WordBitesApp/Info.plist
       properties:
         CFBundleDisplayName: "Word Bites"
+        UIAppFonts:
+          - "Archivo.ttf"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:

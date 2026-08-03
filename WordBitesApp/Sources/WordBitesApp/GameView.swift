@@ -17,10 +17,24 @@ struct GameView: View {
 
     var body: some View {
         ZStack {
-            FullScreenCheckerboard(tileSize: 24, colorA: Theme.pageCheckerA, colorB: Theme.pageCheckerB)
-                .ignoresSafeArea()
+            gameBackground
 
-            VStack(spacing: 10) {
+            // The board sits in its own container that fills the FULL
+            // screen height and centers the board within it -- so the
+            // board's vertical position never shifts when the HUD's own
+            // height (below) changes, since the HUD isn't part of this
+            // stack's layout at all.
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                boardArea
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 4)
+
+            // The HUD floats on top, pinned to the top of the screen --
+            // deliberately NOT part of the centering VStack above.
+            VStack(spacing: 0) {
                 HUDView(
                     mode: viewModel.mode,
                     score: viewModel.score,
@@ -30,30 +44,11 @@ struct GameView: View {
                     onBackToHome: onBackToHome,
                     onBackToSolver: viewModel.quitGame
                 )
-                .padding(.horizontal, 10)
-
                 ScoreToastView(toast: viewModel.scoreToast)
-                    .padding(.horizontal, 10)
-
-                Spacer(minLength: 0)
-
-                if let loadError = viewModel.loadError {
-                    Text(loadError)
-                        .foregroundColor(Theme.pageText)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                } else if viewModel.isDealing {
-                    ProgressView("Dealing...")
-                        .tint(Theme.pageText)
-                        .foregroundColor(Theme.pageText)
-                } else {
-                    BoardView(viewModel: viewModel, cellSize: cellSize)
-                        .padding(.horizontal, 4)
-                }
-
-                Spacer(minLength: 0)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
             }
-            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(
             GeometryReader { geometry in
@@ -66,6 +61,30 @@ struct GameView: View {
         )
         .onChange(of: viewModel.roundOver) { isOver in
             if isOver { onRoundFinished() }
+        }
+    }
+
+    private var gameBackground: some View {
+        ZStack {
+            LinearGradient(colors: [Theme.gameTop, Theme.gameBottom], startPoint: .top, endPoint: .bottom)
+            DotTexture(color: Theme.dotTextureBase.opacity(0.14))
+        }
+        .ignoresSafeArea()
+    }
+
+    @ViewBuilder
+    private var boardArea: some View {
+        if let loadError = viewModel.loadError {
+            Text(loadError)
+                .foregroundColor(Theme.ink)
+                .multilineTextAlignment(.center)
+                .padding()
+        } else if viewModel.isDealing {
+            ProgressView("Dealing...")
+                .tint(Theme.ink)
+                .foregroundColor(Theme.ink)
+        } else {
+            BoardView(viewModel: viewModel, cellSize: cellSize)
         }
     }
 

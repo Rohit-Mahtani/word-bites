@@ -8,6 +8,10 @@ struct LetterInputTile: View {
     var size: CGFloat = 46
     let field: CustomBoardFocusField
     var focusedField: FocusState<CustomBoardFocusField?>.Binding
+    /// 0 when this tile is one half of a fused double-tile pair, whose
+    /// *container* draws the single outer border/corner shape instead.
+    var cornerRadius: CGFloat = 8
+    var showBorder: Bool = true
     /// Rejects a typed letter if it wouldn't be valid here (e.g. it would
     /// duplicate the other half of the same double tile) -- true by default.
     var isValid: (Character) -> Bool = { _ in true }
@@ -23,22 +27,29 @@ struct LetterInputTile: View {
             .textInputAutocapitalization(.characters)
             .autocorrectionDisabled(true)
             .multilineTextAlignment(.center)
-            .font(.custom("Georgia-Bold", size: size * 0.45))
+            .font(Theme.archivoMedium(size * 0.42))
             .foregroundColor(Theme.ink)
             .frame(width: size, height: size)
             .background(
                 Group {
                     if letter == nil {
-                        Theme.tile.opacity(0.55)
+                        Theme.emptySlotFill.opacity(0.14)
                     } else {
                         TileBackground()
                     }
                 }
             )
-            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(letter == nil ? Theme.error.opacity(0.6) : Color.clear, lineWidth: 1.5)
+                Group {
+                    if showBorder {
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .strokeBorder(
+                                letter == nil ? Theme.emptySlotBorder.opacity(0.55) : Theme.tileBorder,
+                                style: StrokeStyle(lineWidth: letter == nil ? 1.5 : 1, dash: letter == nil ? [4, 3] : [])
+                            )
+                    }
+                }
             )
             .focused(focusedField, equals: field)
             .onChange(of: text) { newValue in
