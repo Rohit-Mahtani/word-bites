@@ -1,0 +1,31 @@
+{
+  "name": "Rohit's Aligners Source",
+  "identifier": "com.rohitmahtani.wordbites.altstore-source",
+  "subtitle": "Sideload updates for Aligners, a word-tile board game.",
+  "website": "https://github.com/Rohit-Mahtani/word-bites",
+  "apps": [
+    {
+      "name": "Aligners",
+      "bundleIdentifier": "com.rohitmahtani.wordbites",
+      "developerName": "Rohit Mahtani",
+      "subtitle": "A word-tile board game",
+      "localizedDescription": "A word-tile board game inspired by Word Bites: drag single and double letter tiles into words on an 8x9 board to score points before time runs out.",
+      "version": "1.0",
+      "versionDate": "2026-08-04T17:54:44Z",
+      "versionDescription": "First AltStore-distributable build: parchment/wood redesign, gated scoring-potential generator, direction-aware solver, haptics.",
+      "downloadURL": "https://github.com/Rohit-Mahtani/word-bites/releases/download/sideload-v1.0/WordBitesApp.ipa",
+      "size": 5883289,
+      "sha256": "690fded0c2b6a50a5b0e70b3bdffd2ba827e99c316329827cd3600528b0b7039",
+      "versions": [
+        {
+          "version": "1.0",
+          "date": "2026-08-04T17:54:44Z",
+          "localizedDescription": "First AltStore-distributable build: parchment/wood redesign, gated scoring-potential generator, direction-aware solver, haptics.",
+          "downloadURL": "https://github.com/Rohit-Mahtani/word-bites/releases/download/sideload-v1.0/WordBitesApp.ipa",
+          "size": 5883289,
+          "sha256": "690fded0c2b6a50a5b0e70b3bdffd2ba827e99c316329827cd3600528b0b7039"
+        }
+      ]
+    }
+  ]
+}
