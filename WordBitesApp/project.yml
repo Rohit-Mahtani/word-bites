@@ -20,6 +20,8 @@ targets:
       path: Sources/WordBitesApp/Info.plist
       properties:
         CFBundleDisplayName: "Aligned"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UIAppFonts:
           - "Archivo.ttf"
         UILaunchScreen: {}
