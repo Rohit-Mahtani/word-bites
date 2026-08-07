@@ -1,11 +1,11 @@
 {
-  "name": "Rohit's Aligners Source",
+  "name": "Rohit's Aligned Source",
   "identifier": "com.rohitmahtani.wordbites.altstore-source",
-  "subtitle": "Sideload updates for Aligners, a word-tile board game.",
+  "subtitle": "Sideload updates for Aligned, a word-tile board game.",
   "website": "https://github.com/Rohit-Mahtani/word-bites",
   "apps": [
     {
-      "name": "Aligners",
+      "name": "Aligned",
       "bundleIdentifier": "com.rohitmahtani.wordbites",
       "developerName": "Rohit Mahtani",
       "subtitle": "A word-tile board game",

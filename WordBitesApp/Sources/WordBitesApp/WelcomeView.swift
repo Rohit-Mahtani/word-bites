@@ -13,8 +13,8 @@ struct WelcomeView: View {
                 Spacer()
 
                 VStack(spacing: 18) {
-                    TileLogoView(text: "ALIGNERS", tileSize: 36, fontSize: 19, spacing: 6)
-                    Text("Welcome to Aligners")
+                    TileLogoView(text: "ALIGNED", tileSize: 36, fontSize: 19, spacing: 6)
+                    Text("Welcome to Aligned")
                         .font(Theme.archivoMedium(14))
                         .italic()
                         .foregroundColor(Theme.textMutedMid)

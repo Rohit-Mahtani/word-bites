@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The "ALIGNERS" wordmark rendered as actual game tiles. Each tile sits at
+/// A wordmark rendered as actual game tiles. Each tile sits at
 /// a slight independent rotation, following a fixed alternating pattern
 /// (not randomized per render) for a hand-placed, tactile feel.
 struct TileLogoView: View {

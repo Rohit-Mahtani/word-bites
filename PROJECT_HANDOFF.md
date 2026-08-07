@@ -1,4 +1,4 @@
-# Aligners (Word Bites clone) — Project Handoff
+# Aligned (Word Bites clone) — Project Handoff
 
 Factual summary of the project state as of 2026-08-04. Written to fully catch up a new AI assistant picking this project up cold — no recommendations or opinions included, only what exists and why.
 
@@ -8,7 +8,7 @@ Factual summary of the project state as of 2026-08-04. Written to fully catch up
 - Owner account: Rohit-Mahtani
 - Visibility: Public
 - Local path: `C:\Users\riddh\Documents\WORD BITES`
-- The app's in-app name/wordmark is **"Aligners"** (changed from "Word Bites" — text only: bundle ID `com.rohitmahtani.wordbites`, repo name, folder names, and Xcode project/target names all still say "WordBites"/"wordbites". This was a deliberate scope decision — see "Naming" below.)
+- The app's in-app name/wordmark is **"Aligned"** (changed from "Word Bites" → "Aligners" → "Aligned" — text only: bundle ID `com.rohitmahtani.wordbites`, repo name, folder names, and Xcode project/target names all still say "WordBites"/"wordbites". This was a deliberate scope decision — see "Naming" below.)
 
 ## High-level architecture
 
@@ -21,7 +21,7 @@ No Mac is available in this environment, and there never has been — **no Swift
 
 ## Naming and provenance
 
-This is a clone of the mobile game "Word Bites." The user renamed the *in-app* text to "Aligners" (welcome-screen wordmark and subtitle only) but explicitly scoped that rename to text-only — bundle ID and repo/package names were deliberately left as "wordbites" so the existing AltStore install/signing keeps working without becoming a new app. If this project is ever taken further than personal/friend sideloading (e.g. TestFlight or a public App Store listing), the naming/branding closeness to the original "Word Bites" game is a real consideration worth re-checking at that point — it hasn't been legally reviewed, just visually differentiated via the redesign described below.
+This is a clone of the mobile game "Word Bites." The user renamed the *in-app* text to "Aligners" and later to "Aligned" (welcome-screen wordmark and subtitle, plus `CFBundleDisplayName`) but explicitly scoped both renames to text-only — bundle ID and repo/package names were deliberately left as "wordbites" so the existing AltStore install/signing keeps working without becoming a new app. If this project is ever taken further than personal/friend sideloading (e.g. TestFlight or a public App Store listing), the naming/branding closeness to the original "Word Bites" game is a real consideration worth re-checking at that point — it hasn't been legally reviewed, just visually differentiated via the redesign described below.
 
 ## Original spec (confirmed game rules — unchanged all session)
 
@@ -83,7 +83,7 @@ Located at `WordBitesApp/Sources/WordBitesApp/`:
 - `WordBitesApp.swift` — `@main` App entry point. Root view is `RootView`, now `.preferredColorScheme(.light)` (**changed this session** — was `.dark`, a leftover from the old dark-blue theme that would have mismatched the new light redesign). `.buttonStyle(HapticButtonStyle())` applied here so every `Button` anywhere in the app gets a haptic automatically. `.onAppear { MusicPlayer.start() }` starts the looping background track.
 - `RootView.swift` — owns the long-lived `AppCoordinator`, `StatsStore`, `GameViewModel`, `CustomBoardStore`. In-game back button now routes to `.modeSelect` instead of `.welcome` (changed this session).
 - `AppCoordinator.swift` — `AppScreen` enum (unchanged cases). **Gained** `lastMode: GameMode` and `lastScoringPotential: Double` published properties this session, so Mode Select's settings persist across "New Game" instead of resetting to defaults every time (previously local `@State` on `ModeSelectView`). The Random/Custom board toggle already persisted correctly before (lives in `CustomBoardStore`, which was already app-root-scoped).
-- `WelcomeView.swift` — title screen: tile-styled "ALIGNERS" wordmark (each tile at a slight fixed alternating rotation — see `TileLogoView.swift`), italic "Welcome to Aligners" subtitle, "Single Player"/"High Scores" buttons. Restyled this session to the parchment theme.
+- `WelcomeView.swift` — title screen: tile-styled "ALIGNED" wordmark (each tile at a slight fixed alternating rotation — see `TileLogoView.swift`), italic "Welcome to Aligned" subtitle, "Single Player"/"High Scores" buttons. Restyled this session to the parchment theme.
 - `ModeSelectView.swift` — Timed/Untimed and Random/Custom pickers (now a custom `SegmentedPill` component, not SwiftUI's native `.pickerStyle(.segmented)`, to match the redesign's solid-gold-active-segment look — this is why it needs an explicit `FeedbackPlayer.buttonTapped()` call, since it's not a real `Button`). Scoring Potential slider. `mode`/`scoringPotential` are now `@Binding` (from `AppCoordinator`, see above) instead of local `@State`. Also defines the shared `BackButton` component (restyled this session) used across most screens, and the new `SegmentedPill` component.
 - `CustomBoardStore.swift` — holds the player's manually-entered board. **Gained** `CustomBoardFocusField` enum and `nextEmptyField(after:)` this session, powering auto-advance-to-next-empty-tile on the custom board screen.
 - `CustomBoardView.swift` — editor screen, restyled to the dashed-placeholder look this session; double-tile pairs now render as one fused shape (matching the in-game tile treatment) instead of two separately-bordered halves. Wires up `@FocusState` + the auto-advance behavior.

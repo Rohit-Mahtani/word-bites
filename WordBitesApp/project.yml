@@ -19,7 +19,7 @@ targets:
     info:
       path: Sources/WordBitesApp/Info.plist
       properties:
-        CFBundleDisplayName: "Word Bites"
+        CFBundleDisplayName: "Aligned"
         UIAppFonts:
           - "Archivo.ttf"
         UILaunchScreen: {}
