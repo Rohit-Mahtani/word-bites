@@ -8,7 +8,7 @@ import AVFoundation
 final class WordSoundPlayer: NSObject {
     static let shared = WordSoundPlayer()
 
-    private var soundData: [Int: Data] = [:]
+    private var soundURLs: [Int: URL] = [:]
     private var activePlayers: [AVAudioPlayer] = []
 
     private override init() {
@@ -16,19 +16,24 @@ final class WordSoundPlayer: NSObject {
         try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
         for length in 3...6 {
-            guard let url = Bundle.main.url(forResource: "WordSound\(length)", withExtension: "wav"),
-                  let data = try? Data(contentsOf: url) else { continue }
-            soundData[length] = data
+            soundURLs[length] = Bundle.main.url(forResource: "WordSound\(length)", withExtension: "wav")
         }
     }
 
-    func play(length: Int) {
+    /// Returns a short diagnostic tag describing what happened, temporarily
+    /// surfaced on-screen while tracking down why these sounds go unheard
+    /// on-device despite the resources and audio session checking out.
+    @discardableResult
+    func play(length: Int) -> String {
         let tier = min(max(length, 3), 6)
-        guard let data = soundData[tier], let player = try? AVAudioPlayer(data: data) else { return }
+        guard let url = soundURLs[tier] else { return "no-url" }
+        guard let player = try? AVAudioPlayer(contentsOf: url) else { return "init-failed" }
         player.delegate = self
+        player.volume = 1.0
         activePlayers.append(player)
-        player.prepareToPlay()
-        player.play()
+        let prepared = player.prepareToPlay()
+        let started = player.play()
+        return "ok dur=\(String(format: "%.2f", player.duration)) prep=\(prepared) play=\(started) vol=\(player.volume) route=\(AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ","))"
     }
 }
 

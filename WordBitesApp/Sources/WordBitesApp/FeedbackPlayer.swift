@@ -7,9 +7,10 @@ enum FeedbackPlayer {
     private static let pickupHaptic = UIImpactFeedbackGenerator(style: .light)
     private static let tapHaptic = UIImpactFeedbackGenerator(style: .light)
 
-    static func wordScored(length: Int) {
+    @discardableResult
+    static func wordScored(length: Int) -> String {
         scoreHaptic.impactOccurred()
-        WordSoundPlayer.shared.play(length: length)
+        return WordSoundPlayer.shared.play(length: length)
     }
 
     static func tilePickedUp() {

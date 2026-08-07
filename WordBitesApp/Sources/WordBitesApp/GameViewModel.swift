@@ -281,14 +281,18 @@ final class GameViewModel: ObservableObject {
         }
         guard !newlyFound.isEmpty else { return }
 
+        var lastSoundDiagnostic = ""
         for (word, points) in newlyFound {
             foundWords.insert(word)
             score += points
-            FeedbackPlayer.wordScored(length: word.count)
+            lastSoundDiagnostic = FeedbackPlayer.wordScored(length: word.count)
         }
         // Only the most recent word is shown — it should replace whatever
         // was up instantly, never wait in a queue behind an earlier one.
-        showToast(for: newlyFound[newlyFound.count - 1])
+        // TEMP: sound diagnostic appended to the displayed word while
+        // tracking down why word-scored audio goes unheard on-device.
+        let (lastWord, lastPoints) = newlyFound[newlyFound.count - 1]
+        showToast(for: (word: "\(lastWord) [\(lastSoundDiagnostic)]", points: lastPoints))
     }
 
     private func scanLine(length: Int, newlyFound: inout [(String, Int)], position: (Int) -> Position) {
