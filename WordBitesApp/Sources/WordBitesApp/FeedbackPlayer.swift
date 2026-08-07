@@ -1,8 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Haptic cues for scoring, tile movement, and button taps. Sound effects
-/// were removed — custom audio is coming later.
+/// Haptic and audio cues for scoring, tile movement, and button taps.
 enum FeedbackPlayer {
     private static let scoreHaptic = UIImpactFeedbackGenerator(style: .medium)
     private static let pickupHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -10,6 +9,7 @@ enum FeedbackPlayer {
 
     static func wordScored(length: Int) {
         scoreHaptic.impactOccurred()
+        WordSoundPlayer.shared.play(length: length)
     }
 
     static func tilePickedUp() {
