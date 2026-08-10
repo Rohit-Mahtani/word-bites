@@ -222,47 +222,62 @@ private func arrangementRows(for arrangement: WordArrangement) -> [ArrangementRo
 }
 
 /// One tile-shaped row in the arrangement popup: a single letter, a
-/// perpendicular double tile (both its letters shown side by side, the
-/// unused one dimmed since it's not actually part of the word but is still
-/// physically fused to the tile that is), or an inline double tile spanning
-/// two stacked cells.
+/// perpendicular double tile (both its letters shown side by side, full
+/// opacity -- the one that actually spells the word gets a gold highlight
+/// rather than dimming the other, so every letter stays clearly legible),
+/// or an inline double tile spanning two stacked cells. Every row sits in
+/// the same fixed-width column regardless of how many cells it has, so the
+/// whole stack reads as one clean, aligned tower rather than a zigzag of
+/// different-width rows.
 private struct ArrangementRowView: View {
     let row: ArrangementRow
     private let cellSize: CGFloat = 30
+    private let columnWidth: CGFloat = 66
 
     var body: some View {
-        content
-            .background(TileBackground())
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.tileBorder, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+        tile
+            .frame(width: columnWidth)
     }
 
     @ViewBuilder
-    private var content: some View {
+    private var tile: some View {
         switch row {
         case .single(let letter):
-            cell(String(letter), dimmed: false)
+            wrapped { cell(String(letter)) }
                 .frame(width: cellSize, height: cellSize)
         case .perpendicularDouble(let used, let other, let usedIsFirst):
-            HStack(spacing: 0) {
-                cell(String(usedIsFirst ? used : other), dimmed: !usedIsFirst)
-                cell(String(usedIsFirst ? other : used), dimmed: usedIsFirst)
+            wrapped {
+                HStack(spacing: 0) {
+                    cell(String(usedIsFirst ? used : other), highlighted: usedIsFirst)
+                    cell(String(usedIsFirst ? other : used), highlighted: !usedIsFirst)
+                }
             }
             .frame(width: cellSize * 2, height: cellSize)
         case .inlineDouble(let first, let second):
-            VStack(spacing: 0) {
-                cell(String(first), dimmed: false)
-                cell(String(second), dimmed: false)
+            wrapped {
+                VStack(spacing: 0) {
+                    cell(String(first))
+                    cell(String(second))
+                }
             }
             .frame(width: cellSize, height: cellSize * 2)
         }
     }
 
-    private func cell(_ text: String, dimmed: Bool) -> some View {
+    @ViewBuilder
+    private func wrapped<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .background(TileBackground())
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.tileBorder, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func cell(_ text: String, highlighted: Bool = false) -> some View {
         Text(text)
             .font(Theme.archivoMedium(cellSize * 0.45))
-            .foregroundColor(dimmed ? Theme.inkBoard.opacity(0.35) : Theme.inkBoard)
+            .foregroundColor(Theme.inkBoard)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(highlighted ? Theme.gold.opacity(0.45) : Color.clear)
     }
 }
 
