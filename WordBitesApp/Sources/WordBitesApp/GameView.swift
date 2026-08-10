@@ -46,7 +46,7 @@ struct GameView: View {
                 )
                 ScoreToastView(toast: viewModel.scoreToast)
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
+                    .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }

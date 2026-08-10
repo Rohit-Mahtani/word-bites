@@ -27,9 +27,13 @@ public enum WordArrangementSlot: Sendable, Equatable {
 /// One way to physically arrange a tile set's tiles, in a straight line, to
 /// spell a specific word — the same set of tiles the round dealt, shown in
 /// their fixed reading order, for the solver screen's "how would this have
-/// been arranged" popup.
+/// been arranged" popup. `direction` is the line this particular
+/// arrangement was found along (a word findable both ways only reports
+/// whichever `arrangement(forWord:tiles:)` tries first) — callers displaying
+/// this should lay it out to match, not always as one fixed orientation.
 public struct WordArrangement: Sendable, Equatable {
     public let slots: [WordArrangementSlot]
+    public let direction: TileOrientation
 }
 
 /// Finds every valid word a tile set can produce, for the post-round solver
@@ -108,7 +112,7 @@ public struct WordFinder: Sendable {
             var used = Array(repeating: false, count: tiles.count)
             var slots: [WordArrangementSlot] = []
             if matchArrangement(remaining: Substring(target), tiles: tiles, direction: direction, used: &used, slots: &slots) {
-                return WordArrangement(slots: slots)
+                return WordArrangement(slots: slots, direction: direction)
             }
         }
         return nil

@@ -147,6 +147,30 @@ final class WordFinderTests: XCTestCase {
         XCTAssertEqual(arrangement?.slots, [.single("C"), .single("A"), .single("T")])
     }
 
+    func testArrangementReportsHorizontalDirectionWhenFoundHorizontally() {
+        let finder = makeFinder(words: ["cat"])
+        let tiles: [Tile] = ["c", "a", "t"].map { .single(SingleTile(letter: Character($0))) }
+        let arrangement = finder.arrangement(forWord: "cat", tiles: tiles)
+        XCTAssertEqual(arrangement?.direction, .horizontal)
+    }
+
+    func testArrangementReportsVerticalDirectionWhenOnlyFormableVertically() {
+        // [A,N] and [E,R] both vertical -- per
+        // testWordNeedingTwoConflictingOrientationDoublesIsNotFound-style
+        // reasoning, HANDLER can only assemble along a vertical line here,
+        // since both doubles need to contribute both letters together.
+        let finder = makeFinder(words: ["handler"])
+        let tiles: [Tile] = [
+            .single(SingleTile(letter: "h")),
+            .double(DoubleTile(firstLetter: "a", secondLetter: "n", orientation: .vertical)),
+            .single(SingleTile(letter: "d")),
+            .single(SingleTile(letter: "l")),
+            .double(DoubleTile(firstLetter: "e", secondLetter: "r", orientation: .vertical))
+        ]
+        let arrangement = finder.arrangement(forWord: "handler", tiles: tiles)
+        XCTAssertEqual(arrangement?.direction, .vertical)
+    }
+
     func testArrangementInlinesDoubleTileAlignedWithWordDirection() {
         // CHAT read horizontally, with [CH] a horizontal double: both its
         // letters are consecutive slots since the tile's orientation matches

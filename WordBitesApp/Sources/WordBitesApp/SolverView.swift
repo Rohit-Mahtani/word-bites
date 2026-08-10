@@ -111,12 +111,13 @@ struct SolverView: View {
             .padding(18)
 
             if let selectedWord, let frame = chipFrames[selectedWord] {
+                let arrangement = arrangementProvider(selectedWord)
                 WordArrangementPopup(
                     word: selectedWord,
-                    arrangement: arrangementProvider(selectedWord),
+                    arrangement: arrangement,
                     onDismiss: { self.selectedWord = nil }
                 )
-                .position(popupPosition(for: frame, wordLength: selectedWord.count))
+                .position(popupPosition(for: frame, arrangement: arrangement, wordLength: selectedWord.count))
             }
         }
         .coordinateSpace(name: "solver")
@@ -155,13 +156,24 @@ struct SolverView: View {
 
     /// Centers the popup beside the tapped chip: below it if there's room,
     /// above it otherwise, horizontally clamped so it never runs off
-    /// either edge of the screen. The height/width used for clamping are
-    /// estimates (the popup's real size depends on the word's own tile
-    /// count) -- close enough since this only affects how well-centered the
-    /// popup looks, not whether it stays on screen or is dismissible.
-    private func popupPosition(for frame: CGRect, wordLength: Int) -> CGPoint {
-        let estimatedHeight = CGFloat(max(wordLength, 3)) * 33 + 66
-        let estimatedWidth: CGFloat = 150
+    /// either edge of the screen. The size used for clamping is an estimate
+    /// -- the popup's real size depends on the word's length, its reading
+    /// direction, and whether any tile juts out to the side -- close enough
+    /// since this only affects how well-centered the popup looks, not
+    /// whether it stays on screen or is dismissible.
+    private func popupPosition(for frame: CGRect, arrangement: WordArrangement?, wordLength: Int) -> CGPoint {
+        let length = CGFloat(max(wordLength, 3))
+        let hasPerpendicular = arrangement?.slots.contains {
+            if case .doublePerpendicular = $0 { return true }
+            return false
+        } ?? false
+        let mainAxis = length * 32 + 16
+        let crossAxis: CGFloat = hasPerpendicular ? 64 : 32
+        let isHorizontal = arrangement?.direction == .horizontal
+
+        let estimatedWidth = (isHorizontal ? mainAxis : crossAxis) + 24
+        let estimatedHeight = (isHorizontal ? crossAxis : mainAxis) + 60
+
         let placeBelow = frame.midY < screenSize.height * 0.6
         let rawY = placeBelow
             ? frame.maxY + estimatedHeight / 2 + 10
@@ -182,85 +194,157 @@ private struct WordChipFramePreferenceKey: PreferenceKey {
     }
 }
 
-/// Groups a word's raw `WordArrangementSlot`s into renderable rows: a
-/// `doubleInline` pair (a double tile aligned with the word's own reading
-/// direction) always arrives as two consecutive slots and is rendered as
-/// one fused two-cell tile; everything else is already one row.
-private enum ArrangementRow {
-    case single(Character)
-    case perpendicularDouble(used: Character, other: Character, usedIsFirst: Bool)
-    case inlineDouble(first: Character, second: Character)
+/// One physical tile placed within the popup's mini 2D layout, positioned
+/// relative to the word's own reading line: `mainIndex` is how far along
+/// that line it sits (0-based, one step per letter of the word), `lane` is
+/// the offset perpendicular to that line (0 = on the line itself; a
+/// perpendicular double tile's unused half juts out to lane -1 or +1,
+/// mirroring which side its fixed letter order actually puts it on).
+private enum ArrangementTile {
+    case single(mainIndex: Int, letter: Character)
+    case inline(mainIndex: Int, first: Character, second: Character)
+    case perpendicular(mainIndex: Int, used: Character, other: Character, otherLane: Int)
 }
 
-private func arrangementRows(for arrangement: WordArrangement) -> [ArrangementRow] {
-    var rows: [ArrangementRow] = []
+private func arrangementTiles(for arrangement: WordArrangement) -> [ArrangementTile] {
+    var tiles: [ArrangementTile] = []
+    var mainIndex = 0
     var i = 0
     let slots = arrangement.slots
     while i < slots.count {
         switch slots[i] {
         case .single(let letter):
-            rows.append(.single(letter))
+            tiles.append(.single(mainIndex: mainIndex, letter: letter))
+            mainIndex += 1
             i += 1
         case .doublePerpendicular(let used, let other, let usedIsFirst):
-            rows.append(.perpendicularDouble(used: used, other: other, usedIsFirst: usedIsFirst))
+            // usedIsFirst means the word passes through this tile's FIRST
+            // letter, so its (unused) second letter sits one step further
+            // along the tile's own fixed direction -- lane +1. The reverse
+            // (used is the second letter) puts the unused first letter one
+            // step back, lane -1.
+            tiles.append(.perpendicular(mainIndex: mainIndex, used: used, other: other, otherLane: usedIsFirst ? 1 : -1))
+            mainIndex += 1
             i += 1
         case .doubleInline(let letter, let isFirstOfPair):
             if isFirstOfPair, i + 1 < slots.count, case .doubleInline(let second, false) = slots[i + 1] {
-                rows.append(.inlineDouble(first: letter, second: second))
+                tiles.append(.inline(mainIndex: mainIndex, first: letter, second: second))
+                mainIndex += 2
                 i += 2
             } else {
                 // Defensive fallback for a lone/mismatched inline slot --
                 // shouldn't happen given how WordFinder always emits an
                 // inline pair together, but avoids ever silently dropping
                 // a letter from the display.
-                rows.append(.single(letter))
+                tiles.append(.single(mainIndex: mainIndex, letter: letter))
+                mainIndex += 1
                 i += 1
             }
         }
     }
-    return rows
+    return tiles
 }
 
-/// One tile-shaped row in the arrangement popup: a single letter, a
-/// perpendicular double tile (both its letters shown side by side, full
-/// opacity -- the one that actually spells the word gets a gold highlight
-/// rather than dimming the other, so every letter stays clearly legible),
-/// or an inline double tile spanning two stacked cells. Every row sits in
-/// the same fixed-width column regardless of how many cells it has, so the
-/// whole stack reads as one clean, aligned tower rather than a zigzag of
-/// different-width rows.
-private struct ArrangementRowView: View {
-    let row: ArrangementRow
+/// Lays a word's tiles out on a mini 2D grid mirroring the real board: a
+/// single straight line of cells spells the word -- horizontal or
+/// vertical, matching the direction it was actually found in -- so the
+/// letters always read cleanly in one straight row or column. A
+/// perpendicular double tile's unused half juts out to whichever side its
+/// fixed letter order puts it on, fused to its partner with no seam, same
+/// as a real board tile; it never disturbs the main line's alignment.
+private struct ArrangementGridView: View {
+    let arrangement: WordArrangement
     private let cellSize: CGFloat = 30
-    private let columnWidth: CGFloat = 66
+    private let gap: CGFloat = 2
+    private var pitch: CGFloat { cellSize + gap }
+
+    private var tiles: [ArrangementTile] { arrangementTiles(for: arrangement) }
+    private var mainCount: Int { arrangement.slots.count }
+
+    private var lanesBefore: Int {
+        tiles.contains {
+            if case .perpendicular(_, _, _, let lane) = $0 { return lane < 0 }
+            return false
+        } ? 1 : 0
+    }
+
+    private var lanesAfter: Int {
+        tiles.contains {
+            if case .perpendicular(_, _, _, let lane) = $0 { return lane > 0 }
+            return false
+        } ? 1 : 0
+    }
+
+    private var isHorizontal: Bool { arrangement.direction == .horizontal }
 
     var body: some View {
-        tile
-            .frame(width: columnWidth)
+        let mainAxisLength = CGFloat(mainCount) * pitch - gap
+        let crossAxisLength = CGFloat(1 + lanesBefore + lanesAfter) * pitch - gap
+
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+                tileView(for: tile)
+            }
+        }
+        .frame(
+            width: isHorizontal ? mainAxisLength : crossAxisLength,
+            height: isHorizontal ? crossAxisLength : mainAxisLength
+        )
     }
 
     @ViewBuilder
-    private var tile: some View {
-        switch row {
-        case .single(let letter):
+    private func tileView(for tile: ArrangementTile) -> some View {
+        switch tile {
+        case .single(let mainIndex, let letter):
             wrapped { cell(String(letter)) }
                 .frame(width: cellSize, height: cellSize)
-        case .perpendicularDouble(let used, let other, let usedIsFirst):
+                .position(point(mainStart: mainIndex, laneStart: 0, spanMain: 1, spanLane: 1))
+        case .inline(let mainIndex, let first, let second):
+            wrapped { lineStack { cell(String(first)); cell(String(second)) } }
+                .frame(
+                    width: isHorizontal ? cellSize * 2 + gap : cellSize,
+                    height: isHorizontal ? cellSize : cellSize * 2 + gap
+                )
+                .position(point(mainStart: mainIndex, laneStart: 0, spanMain: 2, spanLane: 1))
+        case .perpendicular(let mainIndex, let used, let other, let otherLane):
             wrapped {
-                HStack(spacing: 0) {
-                    cell(String(usedIsFirst ? used : other), highlighted: usedIsFirst)
-                    cell(String(usedIsFirst ? other : used), highlighted: !usedIsFirst)
+                crossStack {
+                    if otherLane < 0 {
+                        cell(String(other))
+                        cell(String(used), highlighted: true)
+                    } else {
+                        cell(String(used), highlighted: true)
+                        cell(String(other))
+                    }
                 }
             }
-            .frame(width: cellSize * 2, height: cellSize)
-        case .inlineDouble(let first, let second):
-            wrapped {
-                VStack(spacing: 0) {
-                    cell(String(first))
-                    cell(String(second))
-                }
-            }
-            .frame(width: cellSize, height: cellSize * 2)
+            .frame(
+                width: isHorizontal ? cellSize : cellSize * 2 + gap,
+                height: isHorizontal ? cellSize * 2 + gap : cellSize
+            )
+            .position(point(mainStart: mainIndex, laneStart: min(0, otherLane), spanMain: 1, spanLane: 2))
+        }
+    }
+
+    /// A stack running ALONG the word's main line -- used for an inline
+    /// double tile, whose two cells are consecutive word positions.
+    @ViewBuilder
+    private func lineStack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if isHorizontal {
+            HStack(spacing: 0) { content() }
+        } else {
+            VStack(spacing: 0) { content() }
+        }
+    }
+
+    /// A stack running PERPENDICULAR to the word's main line -- used for a
+    /// perpendicular double tile's two cells.
+    @ViewBuilder
+    private func crossStack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if isHorizontal {
+            VStack(spacing: 0) { content() }
+        } else {
+            HStack(spacing: 0) { content() }
         }
     }
 
@@ -278,6 +362,18 @@ private struct ArrangementRowView: View {
             .foregroundColor(Theme.inkBoard)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(highlighted ? Theme.gold.opacity(0.45) : Color.clear)
+    }
+
+    /// Center point (for `.position`) of a tile spanning `spanMain` cells
+    /// along the main axis starting at `mainStart`, and `spanLane` cells
+    /// along the cross axis starting at `laneStart` (lane 0 = the main
+    /// line; negative/positive = before/after it).
+    private func point(mainStart: Int, laneStart: Int, spanMain: Int, spanLane: Int) -> CGPoint {
+        let mainSize = CGFloat(spanMain) * cellSize + CGFloat(spanMain - 1) * gap
+        let crossSize = CGFloat(spanLane) * cellSize + CGFloat(spanLane - 1) * gap
+        let mainCenter = CGFloat(mainStart) * pitch + mainSize / 2
+        let crossCenter = CGFloat(laneStart + lanesBefore) * pitch + crossSize / 2
+        return isHorizontal ? CGPoint(x: mainCenter, y: crossCenter) : CGPoint(x: crossCenter, y: mainCenter)
     }
 }
 
@@ -307,11 +403,7 @@ private struct WordArrangementPopup: View {
             }
 
             if let arrangement {
-                VStack(spacing: 2) {
-                    ForEach(Array(arrangementRows(for: arrangement).enumerated()), id: \.offset) { _, row in
-                        ArrangementRowView(row: row)
-                    }
-                }
+                ArrangementGridView(arrangement: arrangement)
             } else {
                 Text("Couldn't reconstruct an arrangement for this word.")
                     .font(Theme.archivoMedium(11))
