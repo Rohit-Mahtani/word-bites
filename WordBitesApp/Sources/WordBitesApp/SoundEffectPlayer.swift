@@ -15,9 +15,11 @@ final class SoundEffectPlayer: NSObject {
         try? AVAudioSession.sharedInstance().setActive(true)
     }
 
-    /// Silently does nothing if the named resource isn't bundled, so callers
-    /// don't need to guard for sounds that haven't been added yet.
+    /// Silently does nothing if the named resource isn't bundled, or if the
+    /// player has sound effects turned off, so callers don't need to guard
+    /// either case themselves.
     func play(resource: String, extension ext: String = "wav") {
+        guard AudioSettings.isSFXEnabled else { return }
         guard let url = Bundle.main.url(forResource: resource, withExtension: ext),
               let player = try? AVAudioPlayer(contentsOf: url) else { return }
         player.delegate = self

@@ -25,6 +25,7 @@ enum FeedbackPlayer {
 
     static func buttonTapped() {
         tapHaptic.impactOccurred()
+        SoundEffectPlayer.shared.play(resource: "ButtonTap")
     }
 }
 

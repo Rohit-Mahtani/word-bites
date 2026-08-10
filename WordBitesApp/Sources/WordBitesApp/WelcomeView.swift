@@ -4,10 +4,29 @@ struct WelcomeView: View {
     let onSinglePlayer: () -> Void
     let onShowStats: () -> Void
 
+    @State private var isMusicOn = AudioSettings.isMusicEnabled
+    @State private var isSFXOn = AudioSettings.isSFXEnabled
+
     var body: some View {
         ZStack {
             LinearGradient(colors: [Theme.pageTop, Theme.pageBottom], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
+
+            VStack {
+                HStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        AudioToggleButton(systemName: "music.note", isOn: $isMusicOn) { enabled in
+                            MusicPlayer.setEnabled(enabled)
+                        }
+                        AudioToggleButton(systemName: "speaker.wave.2.fill", isOn: $isSFXOn) { enabled in
+                            AudioSettings.isSFXEnabled = enabled
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .padding(20)
 
             VStack(spacing: 34) {
                 Spacer()
@@ -54,6 +73,38 @@ struct WelcomeView: View {
                 Spacer()
             }
             .padding(24)
+        }
+    }
+}
+
+/// A small round icon button that toggles `isOn` and reports the new value
+/// to `onChange` -- used for the welcome screen's music/sound-effects
+/// switches. Off is shown as a diagonal line drawn across the icon (rather
+/// than relying on an SF Symbol "slash" variant existing for every icon
+/// used here) so the same component works for any `systemName`.
+private struct AudioToggleButton: View {
+    let systemName: String
+    @Binding var isOn: Bool
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        Button {
+            isOn.toggle()
+            onChange(isOn)
+        } label: {
+            ZStack {
+                Circle().fill(Theme.textMutedDark.opacity(0.08))
+                Image(systemName: systemName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.textMutedDark)
+                if !isOn {
+                    Rectangle()
+                        .fill(Theme.textMutedDark)
+                        .frame(width: 1.6, height: 24)
+                        .rotationEffect(.degrees(45))
+                }
+            }
+            .frame(width: 38, height: 38)
         }
     }
 }

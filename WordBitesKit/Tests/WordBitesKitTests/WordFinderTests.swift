@@ -139,4 +139,75 @@ final class WordFinderTests: XCTestCase {
         XCTAssertTrue(results.contains("RANTS") || results.contains("EARNS"))
         XCTAssertGreaterThan(results.count, 5)
     }
+
+    func testArrangementFromSingleTiles() {
+        let finder = makeFinder(words: ["cat"])
+        let tiles: [Tile] = ["c", "a", "t"].map { .single(SingleTile(letter: Character($0))) }
+        let arrangement = finder.arrangement(forWord: "cat", tiles: tiles)
+        XCTAssertEqual(arrangement?.slots, [.single("C"), .single("A"), .single("T")])
+    }
+
+    func testArrangementInlinesDoubleTileAlignedWithWordDirection() {
+        // CHAT read horizontally, with [CH] a horizontal double: both its
+        // letters are consecutive slots since the tile's orientation matches
+        // the word's own direction.
+        let finder = makeFinder(words: ["chat"])
+        let tiles: [Tile] = [
+            .double(DoubleTile(firstLetter: "c", secondLetter: "h", orientation: .horizontal)),
+            .single(SingleTile(letter: "a")),
+            .single(SingleTile(letter: "t"))
+        ]
+        let arrangement = finder.arrangement(forWord: "chat", tiles: tiles)
+        XCTAssertEqual(arrangement?.slots, [
+            .doubleInline(letter: "C", isFirstOfPair: true),
+            .doubleInline(letter: "H", isFirstOfPair: false),
+            .single("A"),
+            .single("T")
+        ])
+    }
+
+    func testArrangementCarriesUnusedPartnerLetterForPerpendicularDouble() {
+        // HAT read horizontally, but [C,H] is a *vertical* double tile — only
+        // its H actually sits in this row, so the slot should carry the
+        // unused C alongside it (still physically attached to the tile) with
+        // usedIsFirst = false, since H is the double's second letter.
+        let finder = makeFinder(words: ["hat"])
+        let tiles: [Tile] = [
+            .double(DoubleTile(firstLetter: "c", secondLetter: "h", orientation: .vertical)),
+            .single(SingleTile(letter: "a")),
+            .single(SingleTile(letter: "t"))
+        ]
+        let arrangement = finder.arrangement(forWord: "hat", tiles: tiles)
+        XCTAssertEqual(arrangement?.slots, [
+            .doublePerpendicular(usedLetter: "H", otherLetter: "C", usedIsFirst: false),
+            .single("A"),
+            .single("T")
+        ])
+    }
+
+    func testArrangementReturnsNilForUnformableWord() {
+        let finder = makeFinder(words: ["cat", "dog"])
+        let tiles: [Tile] = ["c", "a", "t"].map { .single(SingleTile(letter: Character($0))) }
+        XCTAssertNil(finder.arrangement(forWord: "dog", tiles: tiles))
+    }
+
+    func testArrangementUsableLetterConcatenationMatchesTheWord() throws {
+        // Every slot's usedLetter, concatenated in order, must spell the
+        // word exactly -- true for any arrangement finder returns.
+        let dictionary = (try? WordDictionary.loadDefault()) ?? WordDictionary(words: ["pander", "panders"])
+        let finder = WordFinder(dictionary: dictionary)
+        let tiles: [Tile] = [
+            .single(SingleTile(letter: "p")),
+            .single(SingleTile(letter: "a")),
+            .single(SingleTile(letter: "n")),
+            .single(SingleTile(letter: "d")),
+            .double(DoubleTile(firstLetter: "e", secondLetter: "r", orientation: .horizontal)),
+            .single(SingleTile(letter: "s"))
+        ]
+        for word in ["PANDERS", "PANDER"] {
+            let arrangement = try XCTUnwrap(finder.arrangement(forWord: word, tiles: tiles))
+            let spelled = String(arrangement.slots.map(\.usedLetter))
+            XCTAssertEqual(spelled, word)
+        }
+    }
 }

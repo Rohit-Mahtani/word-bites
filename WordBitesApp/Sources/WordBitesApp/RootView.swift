@@ -60,6 +60,7 @@ struct RootView: View {
                 foundWords: gameViewModel.foundWords,
                 score: gameViewModel.score,
                 isComputing: gameViewModel.isComputingSolverWords,
+                arrangementProvider: { gameViewModel.arrangement(forWord: $0) },
                 onBack: { coordinator.screen = .welcome },
                 onNewGame: { coordinator.screen = .modeSelect }
             )

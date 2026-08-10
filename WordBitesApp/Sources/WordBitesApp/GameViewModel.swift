@@ -260,6 +260,13 @@ final class GameViewModel: ObservableObject {
 
     func placement(for tileID: UUID) -> Placement? { placements[tileID] }
 
+    /// How this round's dealt tiles could be arranged to spell `word` — for
+    /// the solver screen's tap-to-reveal popup. `tiles` is stable by the
+    /// time the solver screen can show it (the round is already over).
+    func arrangement(forWord word: String) -> WordArrangement? {
+        wordFinder?.arrangement(forWord: word, tiles: tiles)
+    }
+
     /// Non-mutating check for live drag feedback: could `tileID` actually
     /// land with its origin at `origin` right now? Simulates on a copy of
     /// the board (a value type) so nothing here touches real state.
