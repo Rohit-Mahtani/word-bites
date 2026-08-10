@@ -20,13 +20,6 @@ struct TileView: View {
             // get both at once.
             .shadow(color: Theme.tileShadowHard.opacity(isDragging ? 0.45 : 0.35), radius: 0, x: 0, y: isDragging ? 4 : 3)
             .shadow(color: .black.opacity(isDragging ? 0.4 : 0.3), radius: isDragging ? 10 : 5, x: 0, y: isDragging ? 8 : 5)
-            // Blurred shadows are expensive to recompute every frame for a
-            // view whose position changes continuously (i.e. while being
-            // dragged) -- drawingGroup rasterizes the whole tile (gradient,
-            // grain, border, both shadows) into one Metal-backed layer once,
-            // so moving it during a drag is just a cheap texture blit
-            // instead of re-rendering the shadow blur each frame.
-            .drawingGroup()
     }
 
     @ViewBuilder
