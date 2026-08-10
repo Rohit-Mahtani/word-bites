@@ -17,7 +17,7 @@ enum MusicPlayer {
             audioPlayer.numberOfLoops = -1
             audioPlayer.volume = 0.4
             audioPlayer.prepareToPlay()
-            audioPlayer.play()
+            audioPlayer.play(atTime: audioPlayer.deviceCurrentTime + 0.5)
             player = audioPlayer
         } catch {
             // Background music failing to load/play should never block gameplay.
