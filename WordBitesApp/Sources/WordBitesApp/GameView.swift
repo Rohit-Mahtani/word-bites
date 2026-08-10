@@ -49,25 +49,6 @@ struct GameView: View {
                     .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            // TEMP: full-width, wrapping debug overlay for the word-sound
-            // diagnostic -- the toast pill is fixed-height and unconstrained
-            // in width, so a long diagnostic string appended there would
-            // silently overflow off-screen instead of wrapping into view.
-            if !viewModel.lastSoundDiagnostic.isEmpty {
-                VStack {
-                    Spacer()
-                    Text(viewModel.lastSoundDiagnostic)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.leading)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.black.opacity(0.75))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .ignoresSafeArea(edges: .bottom)
-            }
         }
         .background(
             GeometryReader { geometry in

@@ -34,9 +34,6 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var isDealing = true
     @Published private(set) var loadError: String?
     @Published private(set) var scoreToast: ScoreToast?
-    // TEMP: last word-sound playback diagnostic, shown in a debug overlay
-    // while tracking down why word-scored audio goes unheard on-device.
-    @Published private(set) var lastSoundDiagnostic: String = ""
 
     @Published private(set) var solverWords: Set<String> = []
     @Published private(set) var isComputingSolverWords = false
@@ -287,7 +284,7 @@ final class GameViewModel: ObservableObject {
         for (word, points) in newlyFound {
             foundWords.insert(word)
             score += points
-            lastSoundDiagnostic = FeedbackPlayer.wordScored(length: word.count)
+            FeedbackPlayer.wordScored(length: word.count)
         }
         // Only the most recent word is shown — it should replace whatever
         // was up instantly, never wait in a queue behind an earlier one.

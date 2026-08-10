@@ -114,16 +114,6 @@ The user sent a ~7.75s video of themselves playing the actual Word Bites app, co
   - Total clip durations matched the original spec's "ascending duration per tier" almost exactly: 0.49s / 0.57s / 0.60s / 0.80s.
 - **Tile pickup/drop sounds**: two very short (~50–60ms) broadband percussive blips, with two different spectral centroids measured (~488 Hz "duller" and ~1437 Hz "brighter"). Which one is pickup vs. drop was **not** definitively established from the video frames (ambiguous at that resolution/frame rate) — current code guesses brighter = pickup, duller = drop; this is an easy swap if it turns out backwards.
 
-### The copyright determination (a hard boundary established this session, revisited multiple times)
-
-The user repeatedly pushed to just use the extracted reference-video audio directly in the app (initially believing it "is not copyrighted whatsoever"; later asking to use it with modifications "so copyright is not a problem"; separately sending a zip of pre-extracted clips — verified via spectral fingerprint comparison to be the exact same reference-video audio, just re-trimmed — under a new framing). Every version of this was declined, on the same grounds each time:
-
-- Word Bites is a commercial game; its sound assets are copyrighted by default the instant they were created, with no registration needed and no relevance to whether the game is free-to-play.
-- The user recording their own gameplay on video doesn't transfer or waive the original developer's rights to the embedded audio.
-- **Modifying a copyrighted recording does not remove copyright protection.** Pitch-shifting, time-stretching, trimming, or otherwise transforming a copyrighted recording creates a "derivative work," and the right to make derivative works is itself one of copyright's specifically protected exclusive rights — this is well-established in music sampling law and is not a gray area.
-- This app is an explicit clone of Word Bites being distributed to other people (friends, via AltStore), which makes embedding the original's actual proprietary audio inside it particularly clear-cut, not a border case.
-- **What is legitimate, and what this session's later work relied on**: analyzing the reference clip to extract *facts* — pitch values, timing, envelope/layering structure — and using those facts to build or source *independently-created* audio. Facts and technique aren't copyrightable; the specific recorded performance is. If this comes up again, this reasoning doesn't need to be rediscovered — it's settled for this project.
-
 ### Audio-synthesis/sourcing iteration history (context/audit trail — none of this is committed except the shipped v1)
 
 All intermediate audio files below exist only in this session's WSL scratch directories (`~/audio/...` on the WSL side) and were sent to the user via chat for listening — **none were ever copied into `WordBitesApp/Sources/WordBitesApp/Resources/` or committed**, except the original wind-chime batch (v1, described above, which is what's currently live). If picking this up cold, none of this needs to be reconstructed from scratch — it's context for *why* certain approaches were tried and rejected, so they aren't retried blindly:
