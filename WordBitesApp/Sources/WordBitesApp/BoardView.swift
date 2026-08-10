@@ -162,21 +162,8 @@ struct BoardView: View {
                         )
                         let col = Int((newTopLeft.x / pitch).rounded())
                         let row = Int((newTopLeft.y / pitch).rounded())
-                        // Committing the move (which can change `base`, via
-                        // the `.animation(value: base)` modifier below) and
-                        // clearing the live drag offset back to zero both
-                        // happen on release. Left alone, that offset reset
-                        // is an unanimated, instant jump -- so even on a
-                        // clean drop, the tile would teleport from
-                        // "wherever the finger let go" back to `base` for
-                        // one frame before the spring animation catches up,
-                        // reading as a choppy stutter right at the moment
-                        // of release. Animating the offset reset with the
-                        // same spring keeps that transition continuous.
                         viewModel.attemptMove(tileID: tile.id, to: Position(column: col, row: row))
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                            dragOffsets[tile.id] = nil
-                        }
+                        dragOffsets[tile.id] = nil
                         draggingTileID = nil
                         dragCandidateOrigin = nil
                         FeedbackPlayer.tilePlaced()
