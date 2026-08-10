@@ -131,7 +131,12 @@ struct BoardView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: base)
             .zIndex(isDragging ? 10 : 1)
             .gesture(
-                DragGesture()
+                // minimumDistance: 0 so this activates on the very first
+                // touch, not after crossing a movement threshold -- pickup
+                // sound, the green "valid drop zone" highlight, and the
+                // lifted/shadowed visual state should all appear the moment
+                // a tile is pressed, even if it's never actually dragged.
+                DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         // Only one tile may be actively dragged at a time --
                         // each tile has its own independent DragGesture, so
