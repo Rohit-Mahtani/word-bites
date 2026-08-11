@@ -12,7 +12,7 @@ struct TileView: View {
 
     var body: some View {
         content
-            .background(TileBackground())
+            .background(TileBackground().equatable())
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.tileBorder, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 7))
             // Two-layer shadow: a hard "lift" offset directly below, plus a

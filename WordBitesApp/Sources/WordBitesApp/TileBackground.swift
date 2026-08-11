@@ -3,7 +3,18 @@ import SwiftUI
 /// A tile's background: a diagonal warm-wood gradient with a fine grain
 /// overlay, shared by every tile (single, double, and the custom-board
 /// letter inputs) so they all read as the same material.
-struct TileBackground: View {
+///
+/// Equatable (trivially -- there are no stored properties, so every
+/// instance is equal) purely so `.equatable()` at each call site lets
+/// SwiftUI skip re-invoking this body -- and re-running the Canvas closure
+/// below, which strokes a dozen-plus lines by hand -- every time the
+/// *enclosing* tile view re-renders because its on-screen position changed
+/// during a drag. The gradient and grain never change; only where the tile
+/// sits does, and that's handled by the `.position()` modifier one level
+/// up, not by anything in here.
+struct TileBackground: View, Equatable {
+    static func == (lhs: TileBackground, rhs: TileBackground) -> Bool { true }
+
     var body: some View {
         LinearGradient(
             gradient: Gradient(stops: [
