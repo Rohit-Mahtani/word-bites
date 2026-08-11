@@ -11,9 +11,7 @@ struct SolverView: View {
     let onNewGame: () -> Void
 
     @State private var selectedWord: String?
-    @State private var chipFrames: [String: CGRect] = [:]
     @State private var screenSize: CGSize = .zero
-    @State private var popupSize: CGSize = .zero
 
     private var groupedWords: [(length: Int, words: [String])] {
         Dictionary(grouping: allWords, by: \.count)
@@ -111,24 +109,28 @@ struct SolverView: View {
             }
             .padding(18)
 
-            if let selectedWord, let frame = chipFrames[selectedWord] {
-                let arrangement = arrangementProvider(selectedWord)
+            if let selectedWord {
+                // Per-chip positioning ("beside the tapped word") kept
+                // running into real bugs (popups clamped against an
+                // estimated size that didn't match the actual rendered
+                // content, cutting them off) -- dead simple beats clever
+                // here: always centered on screen. No outer maxWidth/
+                // maxHeight cap: a `.frame(maxWidth:)` proposes that larger
+                // size to its content, which let the header row's Spacer
+                // expand to fill it -- stretching the whole card out with
+                // empty space well past the actual tile grid. The card
+                // already sizes tightly to its content and comfortably
+                // fits any real word at this fixed tile size, so it doesn't
+                // need a cap.
                 WordArrangementPopup(
                     word: selectedWord,
-                    arrangement: arrangement,
+                    arrangement: arrangementProvider(selectedWord),
                     onDismiss: { self.selectedWord = nil }
                 )
-                .background(
-                    GeometryReader { geometry in
-                        Color.clear.preference(key: PopupSizePreferenceKey.self, value: geometry.size)
-                    }
-                )
-                .position(popupPosition(for: frame, arrangement: arrangement, wordLength: selectedWord.count))
+                .position(x: screenSize.width / 2, y: screenSize.height / 2)
             }
         }
         .coordinateSpace(name: "solver")
-        .onPreferenceChange(WordChipFramePreferenceKey.self) { chipFrames = $0 }
-        .onPreferenceChange(PopupSizePreferenceKey.self) { popupSize = $0 }
         .background(
             GeometryReader { geometry in
                 Color.clear.onAppear { screenSize = geometry.size }
@@ -152,71 +154,11 @@ struct SolverView: View {
                     .stroke(Theme.goldDeep, lineWidth: isSelected ? 2 : 0)
             )
             .shadow(color: isSelected ? Theme.gold.opacity(0.8) : .clear, radius: isSelected ? 6 : 0)
-            .background(
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: WordChipFramePreferenceKey.self,
-                        value: [word: geometry.frame(in: .named("solver"))]
-                    )
-                }
-            )
             .contentShape(Rectangle())
             .onTapGesture {
                 FeedbackPlayer.buttonTapped()
                 selectedWord = (selectedWord == word) ? nil : word
             }
-    }
-
-    /// Centers the popup beside the tapped chip: below it if there's room,
-    /// above it otherwise, horizontally clamped so it never runs off either
-    /// edge of the screen. Uses the popup's REAL measured size (from the
-    /// previous frame's GeometryReader read, via `popupSize`) whenever one
-    /// is available, falling back to a rough estimate only for the very
-    /// first frame a popup appears, before its actual size has been
-    /// measured. A pure estimate was the actual bug here: it was too narrow
-    /// for some words, so the "clamped" position still let the popup's real
-    /// (wider) content run off the left edge of the screen.
-    private func popupPosition(for frame: CGRect, arrangement: WordArrangement?, wordLength: Int) -> CGPoint {
-        let estimatedWidth: CGFloat
-        let estimatedHeight: CGFloat
-        if popupSize != .zero {
-            estimatedWidth = popupSize.width
-            estimatedHeight = popupSize.height
-        } else {
-            let length = CGFloat(max(wordLength, 3))
-            let hasPerpendicular = arrangement?.slots.contains {
-                if case .doublePerpendicular = $0 { return true }
-                return false
-            } ?? false
-            let isHorizontal = arrangement?.direction == .horizontal
-            let mainAxis = length * 28 + 16
-            let crossAxis: CGFloat = hasPerpendicular ? 56 : 28
-            estimatedWidth = (isHorizontal ? mainAxis : crossAxis) + 24
-            estimatedHeight = (isHorizontal ? crossAxis : mainAxis) + 60
-        }
-
-        let placeBelow = frame.midY < screenSize.height * 0.6
-        let rawY = placeBelow
-            ? frame.maxY + estimatedHeight / 2 + 10
-            : frame.minY - estimatedHeight / 2 - 10
-        let halfWidth = estimatedWidth / 2
-        let x = screenSize.width > 0
-            ? min(max(frame.midX, halfWidth + 12), screenSize.width - halfWidth - 12)
-            : frame.midX
-        let y = max(rawY, estimatedHeight / 2 + 12)
-        return CGPoint(x: x, y: y)
-    }
-}
-
-private struct PopupSizePreferenceKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
-}
-
-private struct WordChipFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
