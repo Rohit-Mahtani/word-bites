@@ -117,14 +117,28 @@ enum PresetBoards {
             double("S", "O", .vertical, 6, 5),
             double("F", "I", .vertical, 4, 7)
         ]),
+        // The source screenshot for this one was mid-round (tiles already
+        // arranged into PLANTERS on the board), not a fresh deal like the
+        // other 9 -- so unlike those, its preview positions below are a
+        // fixed, deliberately-scattered layout rather than a copy of the
+        // screenshot itself.
         PresetBoard(id: 10, name: "Preset 10", tiles: [
-            single("P", 0, 4), single("N", 3, 4), single("T", 4, 4), single("G", 0, 6),
-            single("B", 3, 6), single("C", 4, 8),
-            double("O", "L", .vertical, 1, 3),
-            double("A", "D", .vertical, 2, 4),
-            double("E", "X", .vertical, 5, 4),
-            double("R", "I", .vertical, 6, 4),
-            double("E", "S", .vertical, 7, 3)
+            single("G", 7, 0), single("C", 5, 0), single("N", 3, 3), single("B", 1, 3),
+            single("T", 5, 6), single("P", 4, 8),
+            double("R", "I", .vertical, 1, 0),
+            double("A", "D", .vertical, 6, 3),
+            double("E", "X", .vertical, 3, 5),
+            double("O", "L", .vertical, 1, 6),
+            double("E", "S", .vertical, 7, 6)
+        ]),
+        PresetBoard(id: 11, name: "God Board", tiles: [
+            single("S", 0, 0), single("P", 6, 8), single("R", 1, 7), single("L", 3, 5),
+            single("N", 4, 7), single("C", 4, 1),
+            double("H", "M", .vertical, 2, 1),
+            double("S", "E", .vertical, 7, 1),
+            double("D", "G", .vertical, 7, 4),
+            double("O", "A", .vertical, 5, 4),
+            double("I", "T", .vertical, 0, 4)
         ])
     ]
 }

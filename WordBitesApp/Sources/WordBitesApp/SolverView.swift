@@ -78,32 +78,47 @@ struct SolverView: View {
                         .foregroundColor(Theme.textMutedMid)
                     Spacer()
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(groupedWords, id: \.length) { group in
-                                VStack(alignment: .leading, spacing: 9) {
-                                    HStack(alignment: .lastTextBaseline) {
-                                        Text("\(group.length) Letters")
-                                            .font(Theme.archivoSemiBold(13))
-                                            .foregroundColor(Theme.ink)
-                                        Spacer()
-                                        Text("\(group.words.count) words")
-                                            .font(Theme.archivoMedium(11))
-                                            .foregroundColor(Theme.textMutedLight)
-                                    }
+                    ScrollViewReader { scrollProxy in
+                        ZStack(alignment: .trailing) {
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    ForEach(groupedWords, id: \.length) { group in
+                                        VStack(alignment: .leading, spacing: 9) {
+                                            HStack(alignment: .lastTextBaseline) {
+                                                Text("\(group.length) Letters")
+                                                    .font(Theme.archivoSemiBold(13))
+                                                    .foregroundColor(Theme.ink)
+                                                Spacer()
+                                                Text("\(group.words.count) words")
+                                                    .font(Theme.archivoMedium(11))
+                                                    .foregroundColor(Theme.textMutedLight)
+                                            }
 
-                                    FlowLayout(spacing: 6) {
-                                        ForEach(group.words, id: \.self) { word in
-                                            wordChip(word)
+                                            FlowLayout(spacing: 6) {
+                                                ForEach(group.words, id: \.self) { word in
+                                                    wordChip(word)
+                                                }
+                                            }
                                         }
+                                        .padding(14)
+                                        .background(Theme.cardTranslucent)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                        .id(group.length)
                                     }
                                 }
-                                .padding(14)
-                                .background(Theme.cardTranslucent)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .padding(.bottom, 20)
+                                .padding(.trailing, groupedWords.count > 1 ? 22 : 0)
+                            }
+
+                            if groupedWords.count > 1 {
+                                WordListScrubber { fraction in
+                                    let index = min(groupedWords.count - 1, Int(fraction * CGFloat(groupedWords.count)))
+                                    let anchor: UnitPoint = index == groupedWords.count - 1 ? .bottom : .top
+                                    scrollProxy.scrollTo(groupedWords[index].length, anchor: anchor)
+                                }
+                                .frame(width: 20)
                             }
                         }
-                        .padding(.bottom, 20)
                     }
                 }
             }
@@ -165,6 +180,51 @@ struct SolverView: View {
                 FeedbackPlayer.buttonTapped()
                 selectedWord = (selectedWord == word) ? nil : word
             }
+    }
+}
+
+/// A draggable track on the right edge of the word list: press anywhere on
+/// it and drag up/down to jump the list roughly proportionally, all the way
+/// to the bottom when dragged all the way down. Reports a 0...1 fraction of
+/// how far down the track the touch is, rather than tracking the list's own
+/// scroll offset -- one-directional (drag drives the list, not the other
+/// way around), which keeps this self-contained and avoids the kind of
+/// cross-view geometry sync that's caused real bugs elsewhere in this app.
+private struct WordListScrubber: View {
+    let onDrag: (CGFloat) -> Void
+
+    @State private var isDragging = false
+    @State private var thumbFraction: CGFloat = 0
+
+    private let thumbHeight: CGFloat = 44
+
+    var body: some View {
+        GeometryReader { geometry in
+            let trackHeight = geometry.size.height
+            ZStack(alignment: .top) {
+                Capsule()
+                    .fill(Theme.textMutedDark.opacity(0.12))
+                    .frame(width: 4)
+                    .frame(maxWidth: .infinity)
+
+                Capsule()
+                    .fill(isDragging ? Theme.goldDeep : Theme.gold)
+                    .frame(width: 6, height: thumbHeight)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .offset(y: thumbFraction * max(0, trackHeight - thumbHeight))
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        isDragging = true
+                        let fraction = trackHeight > 0 ? min(max(value.location.y / trackHeight, 0), 1) : 0
+                        thumbFraction = fraction
+                        onDrag(fraction)
+                    }
+                    .onEnded { _ in isDragging = false }
+            )
+        }
     }
 }
 
