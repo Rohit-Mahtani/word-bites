@@ -49,8 +49,9 @@ public struct HighScoreBoardGenerator: Sendable {
     /// has no orientation, so it's always alignable with whichever
     /// direction the anchor word ends up read in, guaranteeing it's never
     /// stranded on the wrong axis. As many anchor letters as fit in the
-    /// remaining single slots ride there; any beyond that each get a
-    /// dedicated double tile (paired with one hook letter).
+    /// remaining single slots ride there — a random subset of the word's
+    /// own letters, not always the same ones — and any beyond that each get
+    /// a dedicated double tile (paired with one hook letter).
     struct AnchorAssignment {
         let singleAnchorLetters: [Character]
         let overflowAnchorLetters: [Character]
@@ -65,11 +66,21 @@ public struct HighScoreBoardGenerator: Sendable {
         anchor.orientation == .horizontal ? .vertical : .horizontal
     }
 
-    static func anchorAssignment(for anchor: AnchorWord) -> AnchorAssignment {
+    /// Which of the anchor word's own letters land on single tiles is
+    /// randomized per call, rather than always the same fixed prefix (e.g.
+    /// PLANTERS always used to put P,L,A,N,T on singles and E,R,S on
+    /// doubles, every single time, purely because of where those letters
+    /// happen to sit in the word's spelling). Nothing about a letter's
+    /// position in the word matters for how it lands on the board — a
+    /// perpendicular double tile contributes just its one anchor letter to
+    /// the line regardless of which letter it is — so any 5-letter subset
+    /// works equally well; there's no reason to always pick the same one.
+    static func anchorAssignment(for anchor: AnchorWord, using rng: inout some RandomNumberGenerator) -> AnchorAssignment {
         let reservedForCritical = 1
         let singleCount = min(anchor.letters.count, Deal.singleTileCount - reservedForCritical)
-        let singleAnchorLetters = Array(anchor.letters.prefix(singleCount))
-        let overflowAnchorLetters = Array(anchor.letters.suffix(from: singleCount))
+        let shuffled = anchor.letters.shuffled(using: &rng)
+        let singleAnchorLetters = Array(shuffled.prefix(singleCount))
+        let overflowAnchorLetters = Array(shuffled.suffix(from: singleCount))
         return AnchorAssignment(
             singleAnchorLetters: singleAnchorLetters,
             overflowAnchorLetters: overflowAnchorLetters,
@@ -209,7 +220,7 @@ public struct HighScoreBoardGenerator: Sendable {
     /// extra letters). Only ever called at max potential.
     private func generateAnchorCandidate(using rng: inout some RandomNumberGenerator) -> Deal? {
         guard let anchor = Self.anchorWords.randomElement(using: &rng) else { return nil }
-        let assignment = Self.anchorAssignment(for: anchor)
+        let assignment = Self.anchorAssignment(for: anchor, using: &rng)
         let anchorLetterSet = Set(anchor.letters)
 
         let hookBigrams = hookLetterSource.candidateBigrams(

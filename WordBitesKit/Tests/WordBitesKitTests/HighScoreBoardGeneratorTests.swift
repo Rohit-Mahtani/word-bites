@@ -34,16 +34,19 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
     }
 
     /// Whitebox: every anchor word's letters are covered exactly once by
-    /// singles + overflow doubles, exactly one single-tile slot is left over
-    /// (reserved for the critical hook letter), and both slot counts fit the
-    /// deal's fixed tile counts (6 singles, 5 doubles) with room for hooks.
+    /// singles + overflow doubles (as a set -- which letters land on which
+    /// side is randomized, so order isn't preserved), exactly one
+    /// single-tile slot is left over (reserved for the critical hook
+    /// letter), and both slot counts fit the deal's fixed tile counts
+    /// (6 singles, 5 doubles) with room for hooks.
     func testAnchorAssignmentCoversEveryAnchorLetterExactlyOnce() {
+        var rng = SystemRandomNumberGenerator()
         for anchor in HighScoreBoardGenerator.anchorWords {
-            let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor)
+            let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor, using: &rng)
             XCTAssertEqual(
-                assignment.singleAnchorLetters + assignment.overflowAnchorLetters,
-                anchor.letters,
-                "singles + overflow should reconstruct \(String(anchor.letters)) exactly, in order"
+                (assignment.singleAnchorLetters + assignment.overflowAnchorLetters).sorted(),
+                anchor.letters.sorted(),
+                "singles + overflow should together be exactly \(String(anchor.letters))'s letters"
             )
             XCTAssertEqual(
                 assignment.singleAnchorLetters.count + 1, Deal.singleTileCount,
@@ -52,6 +55,22 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
             XCTAssertEqual(assignment.overflowAnchorLetters.count + assignment.hookDoublesNeeded, Deal.doubleTileCount)
             XCTAssertLessThanOrEqual(assignment.overflowAnchorLetters.count, Deal.doubleTileCount)
         }
+    }
+
+    /// Which letters land on singles vs. overflow doubles should actually
+    /// vary from call to call -- this is the behavior change from always
+    /// picking the same fixed prefix (e.g. PLANTERS always used to put
+    /// E, R, S on doubles every single time, purely because of their
+    /// position in the word).
+    func testAnchorAssignmentVariesWhichLettersAreSingles() {
+        var rng = SystemRandomNumberGenerator()
+        let anchor = HighScoreBoardGenerator.anchorWords[0]
+        var seenSingleSets = Set<Set<Character>>()
+        for _ in 0..<40 {
+            let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor, using: &rng)
+            seenSingleSets.insert(Set(assignment.singleAnchorLetters))
+        }
+        XCTAssertGreaterThan(seenSingleSets.count, 1, "should not always pick the same 5 letters as singles")
     }
 
     /// The critical hook letter (e.g. C for PLANTERS, T for ALIGNERS/
@@ -157,24 +176,24 @@ final class HighScoreBoardGeneratorTests: XCTestCase {
         }
     }
 
-    /// The complete critical-letter + full-anchor-word signature (exactly
-    /// what `generateAnchorCandidate` produces) must never appear below max
-    /// potential -- that combo is reserved exclusively for potential == 1.
-    func testSubMaxPotentialNeverProducesTheFullGuaranteeSignature() throws {
-        let generator = makeGenerator()
-        for _ in 0..<15 {
-            let deal = try generator.generateDeal(potential: 0.99, candidatePoolSize: 3, maxAttemptsPerCandidate: 400)
-            let singleLetters = deal.singleTiles.map(\.letter).sorted()
-            for anchor in HighScoreBoardGenerator.anchorWords {
-                let assignment = HighScoreBoardGenerator.anchorAssignment(for: anchor)
-                let fullSignature = (assignment.singleAnchorLetters + [anchor.criticalHookLetter]).sorted()
-                XCTAssertNotEqual(
-                    singleLetters, fullSignature,
-                    "potential 0.99 should never produce the exact max-only single-tile signature"
-                )
-            }
-        }
-    }
+    /// The REAL guarantee below max potential is that the deliberate bias
+    /// pool never includes the critical hook letter (see
+    /// `testHookBiasPoolNeverIncludesTheCriticalLetter`, which checks that
+    /// directly and deterministically). An earlier version of this test
+    /// tried to also check, empirically, that a generated deal's singles
+    /// could never coincidentally match some anchor's full signature (5 of
+    /// its own letters + its critical hook letter) -- but that's not
+    /// actually guaranteed by design, and checking every deal against every
+    /// anchor made it a real (if rare) false positive: PLANTERS and
+    /// ALIGNERS/MALIGNERS share several letters (L, A, N, E, R, S), and T is
+    /// both a completely ordinary PLANTERS letter AND ALIGNERS/MALIGNERS'
+    /// own critical hook letter. A PLANTERS-biased deal can perfectly
+    /// legitimately end up with singles that happen to also satisfy
+    /// ALIGNERS' structural pattern, with zero relation to ALIGNERS' own
+    /// (correctly-guarded) bias mechanism ever having fired. That's benign
+    /// letter overlap between related words, not a broken guarantee, so
+    /// there's nothing meaningful left to test here beyond what
+    /// `testHookBiasPoolNeverIncludesTheCriticalLetter` already covers.
 
     /// Whitebox: an anchor's bias pool (what `generateHookBiasedCandidate`
     /// deliberately draws from) never includes its own critical hook letter

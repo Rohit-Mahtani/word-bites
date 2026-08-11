@@ -114,19 +114,25 @@ struct SolverView: View {
                 // running into real bugs (popups clamped against an
                 // estimated size that didn't match the actual rendered
                 // content, cutting them off) -- dead simple beats clever
-                // here: always centered on screen. No outer maxWidth/
-                // maxHeight cap: a `.frame(maxWidth:)` proposes that larger
-                // size to its content, which let the header row's Spacer
-                // expand to fill it -- stretching the whole card out with
-                // empty space well past the actual tile grid. The card
-                // already sizes tightly to its content and comfortably
-                // fits any real word at this fixed tile size, so it doesn't
-                // need a cap.
+                // here: always centered on screen.
+                //
+                // .fixedSize() before .position() is required, not
+                // decorative: .position() proposes its OWN parent's size
+                // (here, the full ZStack -- essentially the whole screen)
+                // down into the popup's content, rather than letting it
+                // size to its natural content. That's what let the header
+                // row's Spacer expand to fill nearly the whole screen width
+                // -- obvious for a narrow vertical word's single tile
+                // column, less obvious for a horizontal word's already-wide
+                // tile row, but the same bug in both cases. .fixedSize()
+                // forces the natural/ideal size to be computed first, and
+                // .position() then just places that already-sized view.
                 WordArrangementPopup(
                     word: selectedWord,
                     arrangement: arrangementProvider(selectedWord),
                     onDismiss: { self.selectedWord = nil }
                 )
+                .fixedSize()
                 .position(x: screenSize.width / 2, y: screenSize.height / 2)
             }
         }
