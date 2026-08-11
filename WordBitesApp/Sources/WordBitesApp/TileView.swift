@@ -11,6 +11,24 @@ struct TileView: View {
     var isDragging = false
 
     var body: some View {
+        // A blurred shadow has to be recomputed every frame for a view
+        // whose position changes continuously -- expensive for the one
+        // tile actively being dragged. `.drawingGroup()` fixes that by
+        // rasterizing into a single Metal-backed layer, but applying it
+        // unconditionally (an earlier attempt) rasterized every resting
+        // tile too and visibly changed how they looked, which nobody asked
+        // for. Scoped to only the actively-dragged tile instead: resting
+        // tiles render exactly as before (byte-identical), and only the
+        // one tile actually in motion is ever flattened, only while it's
+        // moving.
+        if isDragging {
+            tileBody.drawingGroup()
+        } else {
+            tileBody
+        }
+    }
+
+    private var tileBody: some View {
         content
             .background(TileBackground())
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.tileBorder, lineWidth: 1))
