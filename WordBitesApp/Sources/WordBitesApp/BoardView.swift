@@ -5,13 +5,30 @@ import WordBitesKit
 /// A tile's live drag is just a visual offset from its last committed
 /// position — on release we compute the nearest cell, ask the view model
 /// to commit or reject it, then animate to wherever it actually lands.
-struct BoardView: View {
-    @ObservedObject var viewModel: GameViewModel
+///
+/// Takes `tiles`/`placements` as plain values (plus plain closures for the
+/// two view-model actions it needs) rather than `@ObservedObject var
+/// viewModel: GameViewModel` directly. `GameViewModel` is one big
+/// `ObservableObject` covering everything from tile placement to the HUD's
+/// once-a-second timer tick -- an `@ObservedObject` subscription reacts to
+/// *any* published change on the whole object, so holding one directly
+/// would re-render this entire board every single second even though
+/// nothing about the board itself changed. Equatable + `.equatable()` at
+/// the call site lets SwiftUI skip re-invoking `body` altogether on those
+/// irrelevant updates, since it can just compare the actual values.
+struct BoardView: View, Equatable {
+    let tiles: [Tile]
+    let placements: [UUID: Placement]
     let cellSize: CGFloat
+    let canPlace: (UUID, Position) -> Bool
+    let attemptMove: (UUID, Position) -> Void
 
-    @State private var dragOffsets: [UUID: CGSize] = [:]
     @State private var draggingTileID: UUID?
     @State private var dragCandidateOrigin: Position?
+
+    static func == (lhs: BoardView, rhs: BoardView) -> Bool {
+        lhs.tiles == rhs.tiles && lhs.placements == rhs.placements && lhs.cellSize == rhs.cellSize
+    }
 
     private var pitch: CGFloat { cellSize + Theme.gap }
     private var boardWidth: CGFloat { CGFloat(Board.columnCount) * pitch - Theme.gap }
@@ -21,8 +38,8 @@ struct BoardView: View {
         ZStack(alignment: .topLeading) {
             boardBackground
             dropZoneHighlight
-            ForEach(viewModel.tiles, id: \.id) { tile in
-                if let placement = viewModel.placement(for: tile.id) {
+            ForEach(tiles, id: \.id) { tile in
+                if let placement = placements[tile.id] {
                     tileView(tile: tile, placement: placement)
                 }
             }
@@ -70,10 +87,10 @@ struct BoardView: View {
     private var dropZoneHighlight: some View {
         if let tileID = draggingTileID,
            let origin = dragCandidateOrigin,
-           let tile = viewModel.tiles.first(where: { $0.id == tileID }) {
+           let tile = tiles.first(where: { $0.id == tileID }) {
             let orientation = orientation(for: tile)
             let cells = Board.cells(origin: origin, cellCount: tile.cellCount, direction: orientation)
-            let valid = viewModel.canPlace(tileID: tileID, at: origin)
+            let valid = canPlace(tileID, origin)
 
             ForEach(cells.indices, id: \.self) { index in
                 let cell = cells[index]
@@ -111,25 +128,101 @@ struct BoardView: View {
     }
 
     private func tileView(tile: Tile, placement: Placement) -> some View {
-        let size = tileSize(for: tile)
-        let base = topLeft(for: placement)
-        let offset = dragOffsets[tile.id] ?? .zero
-        let isDragging = draggingTileID == tile.id
+        DraggableTileView(
+            tile: tile,
+            cellSize: cellSize,
+            pitch: pitch,
+            base: topLeft(for: placement),
+            size: tileSize(for: tile),
+            isAnyOtherTileDragging: draggingTileID != nil && draggingTileID != tile.id,
+            onDragStart: {
+                draggingTileID = tile.id
+                FeedbackPlayer.tilePickedUp()
+            },
+            onDragCandidateChange: { candidate in
+                // Skip the write (and the re-render + canPlace check it
+                // triggers) when the rounded candidate cell hasn't actually
+                // changed -- most sub-pixel touch deltas during a drag
+                // round to the same cell as the previous event.
+                if dragCandidateOrigin != candidate {
+                    dragCandidateOrigin = candidate
+                }
+            },
+            onDragEnd: { finalOrigin in
+                attemptMove(tile.id, finalOrigin)
+                draggingTileID = nil
+                dragCandidateOrigin = nil
+                FeedbackPlayer.tilePlaced()
+            }
+        )
+        .zIndex(draggingTileID == tile.id ? 10 : 1)
+    }
+}
 
-        return TileView(tile: tile, cellSize: cellSize, isDragging: isDragging)
+/// One tile's own live drag state and gesture, isolated from `BoardView`'s
+/// state on purpose: `dragOffset`/`isDragging` used to live in `BoardView`
+/// (`[UUID: CGSize]` + a `draggingTileID`), so every touch-move event on
+/// *any* tile mutated `BoardView`'s own `@State` and forced its `body` to
+/// re-run — which reconstructed all 11 tiles' full view (gradient, grain
+/// texture, border, two shadows) on every single frame of a drag, not just
+/// the one tile actually moving. A screen recording of real on-device
+/// dragging confirmed this wasn't just perception: its own frame timestamps
+/// showed genuine dropped frames (many 33-50ms gaps instead of the expected
+/// ~17ms) concentrated exactly during dragging.
+///
+/// Keeping the live offset here instead means only *this* tile's `body`
+/// re-runs as it's dragged — SwiftUI skips re-rendering a child view whose
+/// own input properties (`tile`, `base`, ...) are unchanged between parent
+/// re-renders, so the other 10 tiles do no work per frame. `BoardView`
+/// still needs to know which tile is dragging (for the drop-zone highlight
+/// and to block a second finger from starting another drag), so that part
+/// is reported up via `onDragStart`/`onDragCandidateChange`/`onDragEnd`
+/// rather than duplicated here.
+///
+/// Uses `DragGesture()`'s default minimum-distance threshold, not 0 -- an
+/// earlier attempt lowered it to 0 (so pickup/drop sound and the drop-zone
+/// highlight would fire on press, not just after real movement), but that
+/// meant every sub-pixel touch jitter got processed as a live drag event
+/// instead of being filtered out, and was the confirmed cause of persistent
+/// choppiness during fast dragging.
+///
+/// A second attempt tried keeping this gesture untouched and adding a
+/// SEPARATE simultaneous `DragGesture(minimumDistance: 0)` purely to detect
+/// press/release for the same feature. That broke movement in a different,
+/// worse way -- tiles needed to be pressed twice to respond at all -- most
+/// likely two simultaneous `DragGesture`s of different minimum distances on
+/// one view running into SwiftUI/UIKit gesture-recognizer state that
+/// doesn't reset cleanly between touches. Reverted that too; the
+/// press-triggered sound/highlight feature is dropped for now in favor of
+/// keeping movement itself reliable, which is the higher priority.
+private struct DraggableTileView: View {
+    let tile: Tile
+    let cellSize: CGFloat
+    let pitch: CGFloat
+    let base: CGPoint
+    let size: CGSize
+    let isAnyOtherTileDragging: Bool
+    let onDragStart: () -> Void
+    let onDragCandidateChange: (Position?) -> Void
+    let onDragEnd: (Position) -> Void
+
+    @State private var dragOffset: CGSize = .zero
+    @State private var isDragging = false
+
+    var body: some View {
+        TileView(tile: tile, cellSize: cellSize, isDragging: isDragging)
             .frame(width: size.width, height: size.height)
-            .position(x: base.x + size.width / 2 + offset.width, y: base.y + size.height / 2 + offset.height)
+            .position(x: base.x + size.width / 2 + dragOffset.width, y: base.y + size.height / 2 + dragOffset.height)
             // Scoped to just this tile's settled position (`base`, driven by
             // `placement`) so only the tile that actually moved animates.
             // Wrapping the view-model mutation itself in `withAnimation`
-            // (the old approach) puts every tile, the HUD, and the board's
-            // own layout into one shared animated transaction -- which both
-            // blocked a new drag gesture on a different tile from being
-            // recognized until that transaction settled, and let unrelated
-            // layout (the board's position) get swept into the same
-            // animation, causing it to visibly jitter.
+            // (an earlier approach) puts every tile, the HUD, and the
+            // board's own layout into one shared animated transaction --
+            // which both blocked a new drag gesture on a different tile
+            // from being recognized until that transaction settled, and let
+            // unrelated layout (the board's position) get swept into the
+            // same animation, causing it to visibly jitter.
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: base)
-            .zIndex(isDragging ? 10 : 1)
             .gesture(
                 DragGesture()
                     .onChanged { value in
@@ -140,33 +233,31 @@ struct BoardView: View {
                         // a tile has claimed the active drag, every other
                         // tile's gesture updates are ignored until it's
                         // released.
-                        guard draggingTileID == nil || draggingTileID == tile.id else { return }
-                        if draggingTileID != tile.id {
-                            draggingTileID = tile.id
-                            FeedbackPlayer.tilePickedUp()
+                        guard !isAnyOtherTileDragging else { return }
+                        if !isDragging {
+                            isDragging = true
+                            onDragStart()
                         }
-                        dragOffsets[tile.id] = value.translation
+                        dragOffset = value.translation
                         let liveTopLeft = CGPoint(x: base.x + value.translation.width, y: base.y + value.translation.height)
-                        dragCandidateOrigin = Position(
+                        onDragCandidateChange(Position(
                             column: Int((liveTopLeft.x / pitch).rounded()),
                             row: Int((liveTopLeft.y / pitch).rounded())
-                        )
+                        ))
                     }
                     .onEnded { value in
                         // Ignore a release from a tile that was never
                         // granted the active drag (see the guard above).
-                        guard draggingTileID == tile.id else { return }
+                        guard isDragging else { return }
                         let newTopLeft = CGPoint(
                             x: base.x + value.translation.width,
                             y: base.y + value.translation.height
                         )
                         let col = Int((newTopLeft.x / pitch).rounded())
                         let row = Int((newTopLeft.y / pitch).rounded())
-                        viewModel.attemptMove(tileID: tile.id, to: Position(column: col, row: row))
-                        dragOffsets[tile.id] = nil
-                        draggingTileID = nil
-                        dragCandidateOrigin = nil
-                        FeedbackPlayer.tilePlaced()
+                        onDragEnd(Position(column: col, row: row))
+                        dragOffset = .zero
+                        isDragging = false
                     }
             )
     }
