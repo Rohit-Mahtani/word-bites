@@ -213,10 +213,8 @@ final class GameViewModel: ObservableObject {
         board.remove(tile, at: previous)
 
         let candidate = Placement(tileID: tileID, origin: origin, direction: previous.direction)
-        let finalPlacement: Placement
         if board.place(tile, at: candidate) {
             placements[tileID] = candidate
-            finalPlacement = candidate
         } else if let nearby = nearestFreePlacement(for: tile, near: origin, direction: previous.direction),
                   board.place(tile, at: nearby) {
             // Dropped on top of another tile (or off the edge) -- rather
@@ -224,23 +222,11 @@ final class GameViewModel: ObservableObject {
             // land on the closest open cell so a slightly-off drop still
             // goes roughly where the player meant it to.
             placements[tileID] = nearby
-            finalPlacement = nearby
         } else {
             board.place(tile, at: previous)
-            finalPlacement = previous
         }
 
-        // Only lines actually touched by this tile's new position can have
-        // a newly-completed word -- a cell that didn't just change occupancy
-        // can't produce a different run than it already had. Was scanning
-        // all 17 rows+columns on every single drop; on a run of fast,
-        // back-to-back drops (rapid word-making, or just moving tiles
-        // quickly) that unnecessary work was happening synchronously on the
-        // main thread right at the moment of every drop.
-        let cells = Board.cells(origin: finalPlacement.origin, cellCount: tile.cellCount, direction: finalPlacement.direction)
-        let affectedRows = Set(cells.map { $0.row })
-        let affectedColumns = Set(cells.map { $0.column })
-        scanForNewWords(affectedRows: affectedRows, affectedColumns: affectedColumns)
+        scanForNewWords()
     }
 
     /// Expanding-ring search around `origin` (the attempted drop point) for
@@ -260,18 +246,8 @@ final class GameViewModel: ObservableObject {
                 }
             }
             ring.sort { a, b in
-                // Squaring via multiplication, not pow(_:2) -- same result,
-                // but pow() is a generic floating-point function with real
-                // overhead of its own, called on every comparison of what's
-                // already an O(n log n) sort, repeated per ring. This only
-                // runs when a drop lands on an occupied cell or off-board
-                // (needing this nearest-free-cell search at all), which
-                // happens more often the faster/less precisely tiles are
-                // dropped -- exactly when it can least afford to be slow.
-                let dax = Double(a.column - origin.column), day = Double(a.row - origin.row)
-                let dbx = Double(b.column - origin.column), dby = Double(b.row - origin.row)
-                let da = dax * dax + day * day
-                let db = dbx * dbx + dby * dby
+                let da = pow(Double(a.column - origin.column), 2) + pow(Double(a.row - origin.row), 2)
+                let db = pow(Double(b.column - origin.column), 2) + pow(Double(b.row - origin.row), 2)
                 return da < db
             }
             for candidate in ring where Self.isInBoardBounds(candidate) {
@@ -309,12 +285,12 @@ final class GameViewModel: ObservableObject {
         return board.canPlace(tile, at: Placement(tileID: tileID, origin: origin, direction: previous.direction))
     }
 
-    private func scanForNewWords(affectedRows: Set<Int>, affectedColumns: Set<Int>) {
+    private func scanForNewWords() {
         var newlyFound: [(String, Int)] = []
-        for row in affectedRows {
+        for row in 0..<Board.rowCount {
             scanLine(length: Board.columnCount, newlyFound: &newlyFound) { col in Position(column: col, row: row) }
         }
-        for col in affectedColumns {
+        for col in 0..<Board.columnCount {
             scanLine(length: Board.rowCount, newlyFound: &newlyFound) { row in Position(column: col, row: row) }
         }
         guard !newlyFound.isEmpty else { return }
