@@ -25,6 +25,12 @@ struct PresetBoardsView: View {
                     Color.clear.frame(width: 36, height: 36)
                 }
 
+                Text("A handful of prebuilt, deliberately strong boards -- pick one to load it straight into the editor instead of typing 16 letters by hand.")
+                    .font(Theme.archivoMedium(12))
+                    .foregroundColor(Theme.textMutedMid)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(PresetBoards.all) { preset in

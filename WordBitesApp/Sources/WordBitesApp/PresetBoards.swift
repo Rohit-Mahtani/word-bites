@@ -36,6 +36,24 @@ enum PresetBoards {
     }
 
     static let all: [PresetBoard] = [
+        PresetBoard(id: 11, name: "God Board 1", tiles: [
+            single("S", 0, 0), single("P", 6, 8), single("R", 1, 7), single("L", 3, 5),
+            single("N", 4, 7), single("C", 4, 1),
+            double("H", "M", .vertical, 2, 1),
+            double("S", "E", .vertical, 7, 1),
+            double("D", "G", .vertical, 7, 4),
+            double("O", "A", .vertical, 5, 4),
+            double("I", "T", .vertical, 0, 4)
+        ]),
+        PresetBoard(id: 12, name: "God Board 2", tiles: [
+            single("R", 0, 1), single("S", 5, 1), single("I", 2, 2), single("N", 2, 4),
+            single("C", 0, 6), single("E", 6, 8),
+            double("G", "K", .vertical, 7, 0),
+            double("L", "H", .vertical, 7, 3),
+            double("O", "A", .vertical, 2, 6),
+            double("M", "T", .vertical, 4, 5),
+            double("D", "P", .vertical, 0, 3)
+        ]),
         PresetBoard(id: 1, name: "Preset 1", tiles: [
             single("B", 0, 0), single("G", 0, 2), single("E", 0, 4), single("A", 1, 7),
             single("R", 2, 2), single("C", 6, 4),
@@ -130,15 +148,6 @@ enum PresetBoards {
             double("E", "X", .vertical, 3, 5),
             double("O", "L", .vertical, 1, 6),
             double("E", "S", .vertical, 7, 6)
-        ]),
-        PresetBoard(id: 11, name: "God Board", tiles: [
-            single("S", 0, 0), single("P", 6, 8), single("R", 1, 7), single("L", 3, 5),
-            single("N", 4, 7), single("C", 4, 1),
-            double("H", "M", .vertical, 2, 1),
-            double("S", "E", .vertical, 7, 1),
-            double("D", "G", .vertical, 7, 4),
-            double("O", "A", .vertical, 5, 4),
-            double("I", "T", .vertical, 0, 4)
         ])
     ]
 }

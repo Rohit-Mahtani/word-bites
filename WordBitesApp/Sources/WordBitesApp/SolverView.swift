@@ -19,6 +19,27 @@ struct SolverView: View {
             .map { (length: $0.key, words: $0.value.sorted()) }
     }
 
+    /// Every word in the same top-to-bottom, left-to-right order they're
+    /// actually rendered in -- lets the scrubber jump to individual words
+    /// (fine-grained, feels continuous) instead of just the 6-7 length
+    /// groups (coarse, feels like jumping between sections).
+    private var flatWords: [String] {
+        groupedWords.flatMap { $0.words }
+    }
+
+    /// Where (0...1 along the flattened word list) each length group
+    /// begins, for the scrubber's tick marks.
+    private var groupStartFractions: [CGFloat] {
+        guard !flatWords.isEmpty else { return [] }
+        var fractions: [CGFloat] = []
+        var runningCount = 0
+        for group in groupedWords {
+            fractions.append(CGFloat(runningCount) / CGFloat(flatWords.count))
+            runningCount += group.words.count
+        }
+        return fractions
+    }
+
     private var totalPossiblePoints: Int {
         allWords.compactMap(Scorer.points(for:)).reduce(0, +)
     }
@@ -97,26 +118,35 @@ struct SolverView: View {
                                             FlowLayout(spacing: 6) {
                                                 ForEach(group.words, id: \.self) { word in
                                                     wordChip(word)
+                                                        .id(word)
                                                 }
                                             }
                                         }
                                         .padding(14)
                                         .background(Theme.cardTranslucent)
                                         .clipShape(RoundedRectangle(cornerRadius: 16))
-                                        .id(group.length)
                                     }
                                 }
                                 .padding(.bottom, 20)
-                                .padding(.trailing, groupedWords.count > 1 ? 22 : 0)
+                                .padding(.trailing, flatWords.count > 1 ? 14 : 0)
                             }
+                            .scrollIndicators(.hidden)
 
-                            if groupedWords.count > 1 {
-                                WordListScrubber { fraction in
-                                    let index = min(groupedWords.count - 1, Int(fraction * CGFloat(groupedWords.count)))
-                                    let anchor: UnitPoint = index == groupedWords.count - 1 ? .bottom : .top
-                                    scrollProxy.scrollTo(groupedWords[index].length, anchor: anchor)
+                            // Replaces the native scroll indicator entirely
+                            // (hidden above) with one draggable track. Maps
+                            // the drag to an individual WORD, not just the
+                            // 6-7 length groups -- jumping between only 6-7
+                            // stops read as discontinuous "teleporting"
+                            // rather than a smooth scroll; with 50-100+
+                            // words as stops instead, dragging tracks the
+                            // list continuously, the way swiping does.
+                            if flatWords.count > 1 {
+                                WordListScrubber(tickFractions: groupStartFractions) { fraction in
+                                    let index = min(flatWords.count - 1, Int(fraction * CGFloat(flatWords.count)))
+                                    let anchor: UnitPoint = fraction > 0.98 ? .bottom : .top
+                                    scrollProxy.scrollTo(flatWords[index], anchor: anchor)
                                 }
-                                .frame(width: 20)
+                                .frame(width: 14)
                             }
                         }
                     }
@@ -183,33 +213,45 @@ struct SolverView: View {
     }
 }
 
-/// A draggable track on the right edge of the word list: press anywhere on
-/// it and drag up/down to jump the list roughly proportionally, all the way
-/// to the bottom when dragged all the way down. Reports a 0...1 fraction of
-/// how far down the track the touch is, rather than tracking the list's own
-/// scroll offset -- one-directional (drag drives the list, not the other
-/// way around), which keeps this self-contained and avoids the kind of
-/// cross-view geometry sync that's caused real bugs elsewhere in this app.
+/// The single scrollbar for the word list -- replaces the native ScrollView
+/// indicator entirely (hidden at the call site) rather than layering a
+/// second one on top of it. Press anywhere on the track and drag up/down to
+/// scroll; faint tick marks show where each letter-length section starts.
+/// Reports a 0...1 fraction of how far down the track the touch is, rather
+/// than tracking the list's own scroll offset -- one-directional (drag
+/// drives the list, not the other way around), which keeps this
+/// self-contained and avoids the kind of cross-view geometry sync that's
+/// caused real bugs elsewhere in this app. The thumb only moves in response
+/// to being dragged, not to the list being scrolled by swiping directly.
 private struct WordListScrubber: View {
+    let tickFractions: [CGFloat]
     let onDrag: (CGFloat) -> Void
 
     @State private var isDragging = false
     @State private var thumbFraction: CGFloat = 0
 
-    private let thumbHeight: CGFloat = 44
+    private let thumbHeight: CGFloat = 50
 
     var body: some View {
         GeometryReader { geometry in
             let trackHeight = geometry.size.height
             ZStack(alignment: .top) {
                 Capsule()
-                    .fill(Theme.textMutedDark.opacity(0.12))
-                    .frame(width: 4)
+                    .fill(Theme.textMutedDark.opacity(0.1))
+                    .frame(width: 3)
                     .frame(maxWidth: .infinity)
+
+                ForEach(Array(tickFractions.enumerated()), id: \.offset) { _, fraction in
+                    Rectangle()
+                        .fill(Theme.textMutedDark.opacity(0.28))
+                        .frame(width: 8, height: 1.5)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .offset(y: fraction * trackHeight)
+                }
 
                 Capsule()
                     .fill(isDragging ? Theme.goldDeep : Theme.gold)
-                    .frame(width: 6, height: thumbHeight)
+                    .frame(width: 5, height: thumbHeight)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .offset(y: thumbFraction * max(0, trackHeight - thumbHeight))
             }
