@@ -17,9 +17,17 @@ struct TileView: View {
             .clipShape(RoundedRectangle(cornerRadius: 7))
             // Two-layer shadow: a hard "lift" offset directly below, plus a
             // soft ambient shadow -- SwiftUI needs two stacked modifiers to
-            // get both at once.
+            // get both at once. The soft shadow's blur radius while
+            // dragging was 10 (vs 5 at rest) -- a blurred shadow's render
+            // cost scales with its radius, and this is the one tile that's
+            // continuously moving, so that extra blur was being recomputed
+            // on every single drag frame. Brought down to 7: still visibly
+            // softer/more lifted than the resting 5, just not paying for
+            // the full previous radius on every frame. Resting tiles are
+            // completely unaffected -- only the actively-dragged one ever
+            // uses this value.
             .shadow(color: Theme.tileShadowHard.opacity(isDragging ? 0.45 : 0.35), radius: 0, x: 0, y: isDragging ? 4 : 3)
-            .shadow(color: .black.opacity(isDragging ? 0.4 : 0.3), radius: isDragging ? 10 : 5, x: 0, y: isDragging ? 8 : 5)
+            .shadow(color: .black.opacity(isDragging ? 0.4 : 0.3), radius: isDragging ? 7 : 5, x: 0, y: isDragging ? 8 : 5)
     }
 
     @ViewBuilder
