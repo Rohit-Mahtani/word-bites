@@ -13,6 +13,7 @@ struct SolverView: View {
     @State private var selectedWord: String?
     @State private var chipFrames: [String: CGRect] = [:]
     @State private var screenSize: CGSize = .zero
+    @State private var popupSize: CGSize = .zero
 
     private var groupedWords: [(length: Int, words: [String])] {
         Dictionary(grouping: allWords, by: \.count)
@@ -117,11 +118,17 @@ struct SolverView: View {
                     arrangement: arrangement,
                     onDismiss: { self.selectedWord = nil }
                 )
+                .background(
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: PopupSizePreferenceKey.self, value: geometry.size)
+                    }
+                )
                 .position(popupPosition(for: frame, arrangement: arrangement, wordLength: selectedWord.count))
             }
         }
         .coordinateSpace(name: "solver")
         .onPreferenceChange(WordChipFramePreferenceKey.self) { chipFrames = $0 }
+        .onPreferenceChange(PopupSizePreferenceKey.self) { popupSize = $0 }
         .background(
             GeometryReader { geometry in
                 Color.clear.onAppear { screenSize = geometry.size }
@@ -132,6 +139,7 @@ struct SolverView: View {
 
     private func wordChip(_ word: String) -> some View {
         let wasFound = foundWords.contains(word)
+        let isSelected = selectedWord == word
         return Text(word)
             .font(Theme.archivoMedium(12))
             .foregroundColor(wasFound ? Theme.ink : Theme.textMutedDark)
@@ -139,6 +147,11 @@ struct SolverView: View {
             .padding(.vertical, 7)
             .background(wasFound ? AnyShapeStyle(LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color(hex: 0xF0E4CC)))
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Theme.goldDeep, lineWidth: isSelected ? 2 : 0)
+            )
+            .shadow(color: isSelected ? Theme.gold.opacity(0.8) : .clear, radius: isSelected ? 6 : 0)
             .background(
                 GeometryReader { geometry in
                     Color.clear.preference(
@@ -155,24 +168,32 @@ struct SolverView: View {
     }
 
     /// Centers the popup beside the tapped chip: below it if there's room,
-    /// above it otherwise, horizontally clamped so it never runs off
-    /// either edge of the screen. The size used for clamping is an estimate
-    /// -- the popup's real size depends on the word's length, its reading
-    /// direction, and whether any tile juts out to the side -- close enough
-    /// since this only affects how well-centered the popup looks, not
-    /// whether it stays on screen or is dismissible.
+    /// above it otherwise, horizontally clamped so it never runs off either
+    /// edge of the screen. Uses the popup's REAL measured size (from the
+    /// previous frame's GeometryReader read, via `popupSize`) whenever one
+    /// is available, falling back to a rough estimate only for the very
+    /// first frame a popup appears, before its actual size has been
+    /// measured. A pure estimate was the actual bug here: it was too narrow
+    /// for some words, so the "clamped" position still let the popup's real
+    /// (wider) content run off the left edge of the screen.
     private func popupPosition(for frame: CGRect, arrangement: WordArrangement?, wordLength: Int) -> CGPoint {
-        let length = CGFloat(max(wordLength, 3))
-        let hasPerpendicular = arrangement?.slots.contains {
-            if case .doublePerpendicular = $0 { return true }
-            return false
-        } ?? false
-        let mainAxis = length * 32 + 16
-        let crossAxis: CGFloat = hasPerpendicular ? 64 : 32
-        let isHorizontal = arrangement?.direction == .horizontal
-
-        let estimatedWidth = (isHorizontal ? mainAxis : crossAxis) + 24
-        let estimatedHeight = (isHorizontal ? crossAxis : mainAxis) + 60
+        let estimatedWidth: CGFloat
+        let estimatedHeight: CGFloat
+        if popupSize != .zero {
+            estimatedWidth = popupSize.width
+            estimatedHeight = popupSize.height
+        } else {
+            let length = CGFloat(max(wordLength, 3))
+            let hasPerpendicular = arrangement?.slots.contains {
+                if case .doublePerpendicular = $0 { return true }
+                return false
+            } ?? false
+            let isHorizontal = arrangement?.direction == .horizontal
+            let mainAxis = length * 28 + 16
+            let crossAxis: CGFloat = hasPerpendicular ? 56 : 28
+            estimatedWidth = (isHorizontal ? mainAxis : crossAxis) + 24
+            estimatedHeight = (isHorizontal ? crossAxis : mainAxis) + 60
+        }
 
         let placeBelow = frame.midY < screenSize.height * 0.6
         let rawY = placeBelow
@@ -185,6 +206,11 @@ struct SolverView: View {
         let y = max(rawY, estimatedHeight / 2 + 12)
         return CGPoint(x: x, y: y)
     }
+}
+
+private struct PopupSizePreferenceKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
 private struct WordChipFramePreferenceKey: PreferenceKey {
@@ -254,7 +280,7 @@ private func arrangementTiles(for arrangement: WordArrangement) -> [ArrangementT
 /// as a real board tile; it never disturbs the main line's alignment.
 private struct ArrangementGridView: View {
     let arrangement: WordArrangement
-    private let cellSize: CGFloat = 30
+    private let cellSize: CGFloat = 26
     private let gap: CGFloat = 2
     private var pitch: CGFloat { cellSize + gap }
 

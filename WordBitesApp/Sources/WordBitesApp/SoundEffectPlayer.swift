@@ -37,14 +37,30 @@ final class SoundEffectPlayer: NSObject {
     /// Silently does nothing if the named resource isn't bundled/cached, or
     /// if the player has sound effects turned off, so callers don't need to
     /// guard either case themselves.
+    ///
+    /// Constructing an `AVAudioPlayer` even from in-memory `Data` (WAV
+    /// header parsing, buffer allocation) is still real work -- and this is
+    /// called directly from inside the drag gesture's onChanged/onEnded
+    /// closures, the same runloop turn that moves the tile. Doing that
+    /// construction on a background queue, then hopping back to the main
+    /// thread only for the cheap `play()` call itself, keeps the gesture
+    /// callback from ever waiting on it. Costs a few milliseconds of extra
+    /// latency before the sound audibly starts, which is the right
+    /// trade-off here: a slightly-late pickup blip is far less noticeable
+    /// than a dropped frame in the middle of a drag.
     func play(resource: String, extension ext: String = "wav") {
         guard AudioSettings.isSFXEnabled else { return }
-        guard let data = cachedData[resource],
-              let player = try? AVAudioPlayer(data: data) else { return }
-        player.delegate = self
-        activePlayers.append(player)
-        player.prepareToPlay()
-        player.play()
+        guard let data = cachedData[resource] else { return }
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            guard let player = try? AVAudioPlayer(data: data) else { return }
+            player.prepareToPlay()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                player.delegate = self
+                self.activePlayers.append(player)
+                player.play()
+            }
+        }
     }
 }
 

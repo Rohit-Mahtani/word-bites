@@ -21,35 +21,48 @@ struct ScoreToastView: View {
     /// HUD and the board without guessing its height.
     static let height: CGFloat = 40
 
-    // Keeps rendering the most recent word's text while fading out, so the
-    // chip doesn't visibly shrink to empty right as it dismisses -- only
-    // opacity/offset (below) control whether it's actually visible.
-    @State private var displayed: ScoreToast?
+    private static let exitDuration = 0.5
 
+    // The front-most chip: the most recently scored word.
+    @State private var displayed: ScoreToast?
     @State private var isVisible = false
     @State private var yOffset: CGFloat = 6
 
+    // Whatever was in front right before `displayed` was replaced -- kept
+    // on screen, slightly behind and smaller, fading out on its own
+    // timeline instead of disappearing instantly when a new word arrives.
+    @State private var previousDisplayed: ScoreToast?
+    @State private var previousOpacity: Double = 0
+
     var body: some View {
-        HStack(spacing: 6) {
-            Text(displayed?.word ?? "")
-                .font(Theme.archivoSemiBold(16))
-            Text(displayed.map { "+\($0.points)" } ?? "")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(Theme.ink.opacity(0.65))
+        ZStack {
+            if let previousDisplayed {
+                chip(word: previousDisplayed.word, points: previousDisplayed.points)
+                    .scaleEffect(0.94)
+                    .offset(y: 6)
+                    .opacity(previousOpacity)
+                    .zIndex(0)
+            }
+            chip(word: displayed?.word ?? "", points: displayed?.points)
+                .opacity(isVisible ? 1 : 0)
+                .offset(y: yOffset)
+                .zIndex(1)
         }
-        .foregroundColor(Theme.ink)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
-        )
-        .clipShape(Capsule())
-        .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
-        .opacity(isVisible ? 1 : 0)
-        .offset(y: yOffset)
         .frame(height: Self.height)
         .onChange(of: toast) { newValue in
             if let newValue {
+                // Demote whatever's currently in front to the "previous"
+                // slot -- it stays visible, pushed behind the new chip,
+                // and immediately starts fading out there instead of just
+                // vanishing.
+                if isVisible, let current = displayed {
+                    previousDisplayed = current
+                    previousOpacity = 1
+                    withAnimation(.easeOut(duration: Self.exitDuration)) {
+                        previousOpacity = 0
+                    }
+                }
+
                 displayed = newValue
                 // Instantly reset below its resting position -- even if a
                 // previous toast is still mid fade-out -- so every word,
@@ -64,11 +77,29 @@ struct ScoreToastView: View {
                     yOffset = 0
                 }
             } else {
-                // Quick fade out -- no movement, just opacity.
-                withAnimation(.easeOut(duration: 0.18)) {
+                // Slow fade out -- no movement, just opacity.
+                withAnimation(.easeOut(duration: Self.exitDuration)) {
                     isVisible = false
                 }
             }
         }
+    }
+
+    private func chip(word: String, points: Int?) -> some View {
+        HStack(spacing: 6) {
+            Text(word)
+                .font(Theme.archivoSemiBold(16))
+            Text(points.map { "+\($0)" } ?? "")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Theme.ink.opacity(0.65))
+        }
+        .foregroundColor(Theme.ink)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
+        )
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
     }
 }
