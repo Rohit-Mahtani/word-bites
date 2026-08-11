@@ -81,9 +81,8 @@ struct BoardView: View, Equatable {
         .stroke(Theme.dotTextureBase.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [1, 2]))
     }
 
-    /// Highlights the cell(s) the currently-dragged (or just-pressed) tile
-    /// would land on if released right now — green if that spot's valid,
-    /// red if it isn't.
+    /// Highlights the cell(s) the currently-dragged tile would land on if
+    /// released right now — green if that spot's valid, red if it isn't.
     @ViewBuilder
     private var dropZoneHighlight: some View {
         if let tileID = draggingTileID,
@@ -136,9 +135,8 @@ struct BoardView: View, Equatable {
             base: topLeft(for: placement),
             size: tileSize(for: tile),
             isAnyOtherTileDragging: draggingTileID != nil && draggingTileID != tile.id,
-            onPressStart: {
+            onDragStart: {
                 draggingTileID = tile.id
-                dragCandidateOrigin = placement.origin
                 FeedbackPlayer.tilePickedUp()
             },
             onDragCandidateChange: { candidate in
@@ -150,7 +148,7 @@ struct BoardView: View, Equatable {
                     dragCandidateOrigin = candidate
                 }
             },
-            onPressEnd: { finalOrigin in
+            onDragEnd: { finalOrigin in
                 attemptMove(tile.id, finalOrigin)
                 draggingTileID = nil
                 dragCandidateOrigin = nil
@@ -178,26 +176,25 @@ struct BoardView: View, Equatable {
 /// re-renders, so the other 10 tiles do no work per frame. `BoardView`
 /// still needs to know which tile is dragging (for the drop-zone highlight
 /// and to block a second finger from starting another drag), so that part
-/// is reported up via `onPressStart`/`onDragCandidateChange`/`onPressEnd`
+/// is reported up via `onDragStart`/`onDragCandidateChange`/`onDragEnd`
 /// rather than duplicated here.
 ///
-/// Two separate, simultaneous gestures, deliberately not merged into one:
-/// - `press`, at `minimumDistance: 0`, exists purely to detect raw
-///   press/release regardless of movement (so the pickup/drop sound and the
-///   drop-zone highlight fire the instant a tile is touched, even on a
-///   plain tap that never moves it). Its `onChanged` only *acts* on the
-///   very first call per press (guarded by `isActive`) -- every subsequent
-///   call, including ones from sub-pixel jitter, is an early-return no-op
-///   that writes no state and triggers no re-render.
-/// - `movement`, at the default minimum distance, is the one that actually
-///   tracks `dragOffset` and the live candidate cell as the tile visibly
-///   moves. An earlier attempt lowered *this* gesture's minimum distance to
-///   0 to get the same press-triggered sound/highlight -- but that made
-///   sub-pixel jitter update `dragOffset` (and re-render) on every event,
-///   which was the confirmed, measured cause of choppy fast dragging.
-///   Keeping this one at its default threshold is what keeps that fixed;
-///   `press` gets the same "trigger on touch" behavior without paying that
-///   cost, since its own per-event work after the first call is free.
+/// Uses `DragGesture()`'s default minimum-distance threshold, not 0 -- an
+/// earlier attempt lowered it to 0 (so pickup/drop sound and the drop-zone
+/// highlight would fire on press, not just after real movement), but that
+/// meant every sub-pixel touch jitter got processed as a live drag event
+/// instead of being filtered out, and was the confirmed cause of persistent
+/// choppiness during fast dragging.
+///
+/// A second attempt tried keeping this gesture untouched and adding a
+/// SEPARATE simultaneous `DragGesture(minimumDistance: 0)` purely to detect
+/// press/release for the same feature. That broke movement in a different,
+/// worse way -- tiles needed to be pressed twice to respond at all -- most
+/// likely two simultaneous `DragGesture`s of different minimum distances on
+/// one view running into SwiftUI/UIKit gesture-recognizer state that
+/// doesn't reset cleanly between touches. Reverted that too; the
+/// press-triggered sound/highlight feature is dropped for now in favor of
+/// keeping movement itself reliable, which is the higher priority.
 private struct DraggableTileView: View {
     let tile: Tile
     let cellSize: CGFloat
@@ -205,15 +202,15 @@ private struct DraggableTileView: View {
     let base: CGPoint
     let size: CGSize
     let isAnyOtherTileDragging: Bool
-    let onPressStart: () -> Void
+    let onDragStart: () -> Void
     let onDragCandidateChange: (Position?) -> Void
-    let onPressEnd: (Position) -> Void
+    let onDragEnd: (Position) -> Void
 
     @State private var dragOffset: CGSize = .zero
-    @State private var isActive = false
+    @State private var isDragging = false
 
     var body: some View {
-        TileView(tile: tile, cellSize: cellSize, isDragging: isActive)
+        TileView(tile: tile, cellSize: cellSize, isDragging: isDragging)
             .frame(width: size.width, height: size.height)
             .position(x: base.x + size.width / 2 + dragOffset.width, y: base.y + size.height / 2 + dragOffset.height)
             // Scoped to just this tile's settled position (`base`, driven by
@@ -229,7 +226,18 @@ private struct DraggableTileView: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        guard !isAnyOtherTileDragging, isActive else { return }
+                        // Only one tile may be actively dragged at a time --
+                        // each tile has its own independent DragGesture, so
+                        // without this gate, a second finger on a different
+                        // tile would start its own simultaneous drag. Once
+                        // a tile has claimed the active drag, every other
+                        // tile's gesture updates are ignored until it's
+                        // released.
+                        guard !isAnyOtherTileDragging else { return }
+                        if !isDragging {
+                            isDragging = true
+                            onDragStart()
+                        }
                         dragOffset = value.translation
                         let liveTopLeft = CGPoint(x: base.x + value.translation.width, y: base.y + value.translation.height)
                         onDragCandidateChange(Position(
@@ -237,25 +245,19 @@ private struct DraggableTileView: View {
                             row: Int((liveTopLeft.y / pitch).rounded())
                         ))
                     }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        // Only one tile may be actively pressed at a time --
-                        // without this gate, a second finger on a different
-                        // tile would start its own simultaneous press.
-                        guard !isAnyOtherTileDragging, !isActive else { return }
-                        isActive = true
-                        onPressStart()
-                    }
-                    .onEnded { _ in
-                        guard isActive else { return }
-                        let newTopLeft = CGPoint(x: base.x + dragOffset.width, y: base.y + dragOffset.height)
+                    .onEnded { value in
+                        // Ignore a release from a tile that was never
+                        // granted the active drag (see the guard above).
+                        guard isDragging else { return }
+                        let newTopLeft = CGPoint(
+                            x: base.x + value.translation.width,
+                            y: base.y + value.translation.height
+                        )
                         let col = Int((newTopLeft.x / pitch).rounded())
                         let row = Int((newTopLeft.y / pitch).rounded())
-                        onPressEnd(Position(column: col, row: row))
+                        onDragEnd(Position(column: col, row: row))
                         dragOffset = .zero
-                        isActive = false
+                        isDragging = false
                     }
             )
     }
