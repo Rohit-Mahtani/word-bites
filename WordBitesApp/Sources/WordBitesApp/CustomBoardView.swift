@@ -8,6 +8,7 @@ import WordBitesKit
 struct CustomBoardView: View {
     @ObservedObject var store: CustomBoardStore
     let onBack: () -> Void
+    let onShowPresets: () -> Void
     @FocusState private var focusedField: CustomBoardFocusField?
 
     var body: some View {
@@ -23,7 +24,17 @@ struct CustomBoardView: View {
                         .font(Theme.archivoBold(26))
                         .foregroundColor(Theme.ink)
                     Spacer()
-                    Color.clear.frame(width: 36, height: 36)
+                    Button(action: onShowPresets) {
+                        Text("Presets")
+                            .font(Theme.archivoMedium(13))
+                            .foregroundColor(Theme.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
                 }
 
                 ScrollView {

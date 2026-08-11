@@ -5,6 +5,7 @@ enum AppScreen: Equatable {
     case welcome
     case modeSelect
     case customBoard
+    case presetBoards
     case playing
     case solver
     case stats

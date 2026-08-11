@@ -41,6 +41,14 @@ final class CustomBoardStore: ObservableObject {
     var filledSingleCount: Int { singles.filter { $0.letter != nil }.count }
     var filledDoubleCount: Int { doubles.filter { $0.firstLetter != nil && $0.secondLetter != nil }.count }
 
+    /// Replaces every slot with a preset's letters/orientations in one shot,
+    /// same as if the player had typed them all in by hand.
+    func loadPreset(_ preset: PresetBoard) {
+        singles = preset.singleLetters.map { CustomSingleTile(letter: $0) }
+        doubles = preset.doubleTiles.map { CustomDoubleTile(firstLetter: $0.first, secondLetter: $0.second, orientation: $0.orientation) }
+        isCustomMode = true
+    }
+
     var isComplete: Bool {
         filledSingleCount == singles.count && filledDoubleCount == doubles.count
     }

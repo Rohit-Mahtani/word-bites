@@ -44,7 +44,17 @@ struct RootView: View {
         case .customBoard:
             CustomBoardView(
                 store: customBoardStore,
-                onBack: { coordinator.screen = .modeSelect }
+                onBack: { coordinator.screen = .modeSelect },
+                onShowPresets: { coordinator.screen = .presetBoards }
+            )
+
+        case .presetBoards:
+            PresetBoardsView(
+                onSelect: { preset in
+                    customBoardStore.loadPreset(preset)
+                    coordinator.screen = .customBoard
+                },
+                onBack: { coordinator.screen = .customBoard }
             )
 
         case .playing:
