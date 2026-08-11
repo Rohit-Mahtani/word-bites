@@ -268,18 +268,14 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Non-mutating check for live drag feedback: could `tileID` actually
-    /// land with its origin at `origin` right now? Called on every drag
-    /// frame the candidate cell changes, so it's worth being cheap:
-    /// `Board.canPlace` already treats a cell occupied by `tile`'s own ID as
-    /// compatible (see its doc comment), so removing the tile from a copy
-    /// of the board first -- which used to happen here -- never actually
-    /// changed the answer, it just paid for a copy-on-write array copy on
-    /// every call for nothing. Checking directly against the live board
-    /// gives an identical result with zero allocation.
+    /// land with its origin at `origin` right now? Simulates on a copy of
+    /// the board (a value type) so nothing here touches real state.
     func canPlace(tileID: UUID, at origin: Position) -> Bool {
         guard let tile = tiles.first(where: { $0.id == tileID }),
               let previous = placements[tileID] else { return false }
-        return board.canPlace(tile, at: Placement(tileID: tileID, origin: origin, direction: previous.direction))
+        var probe = board
+        probe.remove(tile, at: previous)
+        return probe.canPlace(tile, at: Placement(tileID: tileID, origin: origin, direction: previous.direction))
     }
 
     private func scanForNewWords() {

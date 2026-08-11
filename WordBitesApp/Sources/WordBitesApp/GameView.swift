@@ -62,7 +62,6 @@ struct GameView: View {
         .onChange(of: viewModel.roundOver) { isOver in
             if isOver { onRoundFinished() }
         }
-        .onAppear { FeedbackPlayer.prepareAll() }
     }
 
     private var gameBackground: some View {
@@ -85,14 +84,7 @@ struct GameView: View {
                 .tint(Theme.ink)
                 .foregroundColor(Theme.ink)
         } else {
-            BoardView(
-                tiles: viewModel.tiles,
-                placements: viewModel.placements,
-                cellSize: cellSize,
-                canPlace: { tileID, origin in viewModel.canPlace(tileID: tileID, at: origin) },
-                attemptMove: { tileID, origin in viewModel.attemptMove(tileID: tileID, to: origin) }
-            )
-            .equatable()
+            BoardView(viewModel: viewModel, cellSize: cellSize)
         }
     }
 
