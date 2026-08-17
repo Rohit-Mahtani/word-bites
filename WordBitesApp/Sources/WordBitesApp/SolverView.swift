@@ -1,6 +1,27 @@
 import SwiftUI
 import WordBitesKit
 
+/// Reports the word list's scrollable content frame, in `.global`
+/// coordinates. Paired with `WordListViewportFramePreferenceKey` below to
+/// compute how far the list has been scrolled -- see the comment on
+/// `wordListScrollFraction` for why `.global` rather than a named
+/// coordinate space.
+private struct WordListContentFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+/// Reports the word list's fixed on-screen viewport frame (the ScrollView
+/// itself, not its scrolling content), in `.global` coordinates.
+private struct WordListViewportFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 struct SolverView: View {
     let allWords: Set<String>
     let foundWords: Set<String>
@@ -12,6 +33,29 @@ struct SolverView: View {
 
     @State private var selectedWord: String?
     @State private var screenSize: CGSize = .zero
+
+    // Tracks the word list's live scroll position so the scrubber's thumb
+    // also moves when the list is scrolled the normal way, by swiping it
+    // directly. A first attempt at this used a named coordinate space on
+    // the ScrollView (geometry.frame(in: .named("wordListScroll"))) and
+    // didn't work on-device. This computes the same offset a different way
+    // -- the content's position minus the scroll viewport's own position,
+    // both measured in plain .global coordinates -- to sidestep whatever
+    // specific quirk the named-space version had. This exact mechanism was
+    // built once already but got swept up in an unrelated blanket revert
+    // before ever being tested on-device, so this is its first real test,
+    // not a second confirmed failure.
+    @State private var wordListContentGlobalMinY: CGFloat = 0
+    @State private var wordListViewportGlobalMinY: CGFloat = 0
+    @State private var wordListContentHeight: CGFloat = 0
+    @State private var wordListViewportHeight: CGFloat = 0
+
+    private var wordListScrollFraction: CGFloat {
+        let scrollableRange = wordListContentHeight - wordListViewportHeight
+        guard scrollableRange > 0 else { return 0 }
+        let offset = wordListContentGlobalMinY - wordListViewportGlobalMinY
+        return min(1, max(0, -offset / scrollableRange))
+    }
 
     private var groupedWords: [(length: Int, words: [String])] {
         Dictionary(grouping: allWords, by: \.count)
@@ -129,8 +173,18 @@ struct SolverView: View {
                                 }
                                 .padding(.bottom, 20)
                                 .padding(.trailing, flatWords.count > 1 ? 8 : 0)
+                                .background(
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(key: WordListContentFramePreferenceKey.self, value: geometry.frame(in: .global))
+                                    }
+                                )
                             }
                             .scrollIndicators(.hidden)
+                            .background(
+                                GeometryReader { geometry in
+                                    Color.clear.preference(key: WordListViewportFramePreferenceKey.self, value: geometry.frame(in: .global))
+                                }
+                            )
 
                             // Replaces the native scroll indicator entirely
                             // (hidden above) with one draggable track. Maps
@@ -141,23 +195,29 @@ struct SolverView: View {
                             // words as stops instead, dragging tracks the
                             // list continuously, the way swiping does.
                             //
-                            // Doesn't reflect the list's position when it's
-                            // scrolled the normal way (swiping) -- an
-                            // attempt at that (tracking scroll offset via a
-                            // named-coordinate-space GeometryReader) didn't
-                            // actually work on-device, and this is the third
-                            // GeometryReader/PreferenceKey cross-view sync
-                            // in this app that hasn't behaved as expected
-                            // once tested for real, so it's reverted rather
-                            // than guessed at a third time.
+                            // The thumb also reflects the list's position
+                            // when it's scrolled the normal way (swiping),
+                            // via wordListScrollFraction -- see that
+                            // property's comment for why this uses plain
+                            // .global frame subtraction rather than the
+                            // named-coordinate-space technique that didn't
+                            // work on-device.
                             if flatWords.count > 1 {
-                                WordListScrubber(tickFractions: groupStartFractions) { fraction in
+                                WordListScrubber(tickFractions: groupStartFractions, externalFraction: wordListScrollFraction) { fraction in
                                     let index = min(flatWords.count - 1, Int(fraction * CGFloat(flatWords.count)))
                                     let anchor: UnitPoint = fraction > 0.98 ? .bottom : .top
                                     scrollProxy.scrollTo(flatWords[index], anchor: anchor)
                                 }
                                 .frame(width: 10)
                             }
+                        }
+                        .onPreferenceChange(WordListContentFramePreferenceKey.self) { frame in
+                            wordListContentGlobalMinY = frame.minY
+                            wordListContentHeight = frame.height
+                        }
+                        .onPreferenceChange(WordListViewportFramePreferenceKey.self) { frame in
+                            wordListViewportGlobalMinY = frame.minY
+                            wordListViewportHeight = frame.height
                         }
                     }
                 }
@@ -226,21 +286,24 @@ struct SolverView: View {
 /// indicator entirely (hidden at the call site) rather than layering a
 /// second one on top of it. Press anywhere on the track and drag up/down to
 /// scroll; faint tick marks show where each letter-length section starts.
-/// Reports a 0...1 fraction of how far down the track the touch is, rather
-/// than tracking the list's own scroll offset -- one-directional (drag
-/// drives the list, not the other way around). The thumb only moves in
-/// response to being dragged, not to the list being scrolled by swiping
-/// directly -- an attempt at bidirectional sync didn't actually work
-/// on-device (see the call site's comment), so this stays one-directional
-/// rather than shipping a guess a third time.
+/// Reports a 0...1 fraction of how far down the track the touch is. While
+/// dragging, the thumb follows the touch directly; otherwise it follows
+/// `externalFraction`, which the call site derives from the word list's
+/// own live scroll position -- so the thumb tracks the list whichever way
+/// it's being moved, drag-the-scrubber or swipe-the-list.
 private struct WordListScrubber: View {
     let tickFractions: [CGFloat]
+    let externalFraction: CGFloat
     let onDrag: (CGFloat) -> Void
 
     @State private var isDragging = false
     @State private var thumbFraction: CGFloat = 0
 
     private let thumbHeight: CGFloat = 50
+
+    private var displayedFraction: CGFloat {
+        isDragging ? thumbFraction : externalFraction
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -263,7 +326,7 @@ private struct WordListScrubber: View {
                     .fill(isDragging ? Theme.goldDeep : Theme.gold)
                     .frame(width: 5, height: thumbHeight)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .offset(y: thumbFraction * max(0, trackHeight - thumbHeight))
+                    .offset(y: displayedFraction * max(0, trackHeight - thumbHeight))
             }
             .contentShape(Rectangle())
             .gesture(
