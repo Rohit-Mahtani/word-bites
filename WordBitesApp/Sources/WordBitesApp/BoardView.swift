@@ -179,38 +179,36 @@ struct BoardView: View, Equatable {
 /// is reported up via `onDragStart`/`onDragCandidateChange`/`onDragEnd`
 /// rather than duplicated here.
 ///
-/// Fires pickup on touch, not just after real movement. Two earlier
-/// mechanisms for this were tried and reverted: lowering the movement
-/// gesture's own `minimumDistance` to 0 (every sub-pixel touch jitter got
-/// processed as a live drag event -- confirmed cause of dragging
-/// choppiness), and a second, separate `DragGesture(minimumDistance: 0)`
-/// alongside the movement one (two simultaneous `DragGesture`s on one view
-/// left gesture-recognizer state broken -- tiles needed to be pressed twice
-/// to respond).
-///
-/// A third mechanism -- `LongPressGesture(minimumDuration: 0).sequenced(
-/// before: DragGesture())`, one composite gesture instead of two -- fixed
-/// both of those, but introduced its own bug: `DragGesture`'s `onEnded`
-/// (and therefore the sequence's own `onEnded`) only fires if the drag
-/// actually *begins*, i.e. crosses its minimum-distance threshold. Touch a
-/// tile and release without moving it far enough, and the sequence's
-/// `onEnded` never fires at all -- `isDragging` (and the parent's
-/// `draggingTileID`) stayed stuck "on" until that exact same tile was
-/// dragged for real, blocking every other tile in the meantime.
-///
-/// Current mechanism: `LongPressGesture(minimumDuration: 0, maximumDistance:
-/// .infinity)` is now the *sole* source of truth for press and release,
-/// handled entirely on its own via `.gesture(...)` -- `maximumDistance:
-/// .infinity` means it can never fail/cancel due to movement, so unlike
-/// `DragGesture`, its `onEnded` is guaranteed to fire on every release,
-/// moved or not. A separate, untouched `DragGesture()` (default minimum
-/// distance, attached via `.simultaneousGesture(...)`) only ever reports
-/// `onChanged`, purely to update the live offset while actually dragging --
-/// its `onEnded` isn't used at all anymore, so whether it ever fires is no
-/// longer load-bearing. Two different gesture *types* running
-/// simultaneously (not two of the same type, which is the confirmed trap
-/// above) -- still real gesture-composition territory, so this needs the
-/// same on-device scrutiny as every prior attempt.
+/// Fires pickup on touch, not just after real movement, via
+/// `LongPressGesture(minimumDuration: 0).sequenced(before: DragGesture())`
+/// -- a single composite gesture per tile, not two. This exact mechanism is
+/// the result of four attempts, three of them reverted:
+/// 1. Lowering this gesture's own `minimumDistance` to 0 -- every sub-pixel
+///    touch jitter got processed as a live drag event, the confirmed cause
+///    of persistent dragging choppiness.
+/// 2. A second, separate `DragGesture(minimumDistance: 0)` alongside this
+///    one via `.gesture` + `.simultaneousGesture` -- two simultaneous
+///    `DragGesture`s of different minimum distances on one view left
+///    SwiftUI/UIKit's gesture-recognizer state broken; tiles needed to be
+///    pressed twice to respond at all.
+/// 3. This same `.sequenced` composite, but with a SEPARATE
+///    `DragGesture()` for movement attached via `.simultaneousGesture` (so
+///    a `LongPressGesture(maximumDistance: .infinity)` alone could own
+///    release-detection) -- movement stopped working *entirely*.
+///    `.simultaneousGesture` alongside a `LongPressGesture` on this view is
+///    now also a confirmed trap, not just a theoretical risk.
+/// 4. Current: back to this single composite gesture exactly as in
+///    attempt 1's structure (proven not to break movement), fixing its one
+///    remaining known bug -- a release with too little movement to cross
+///    `DragGesture`'s own minimum distance never fires this gesture's
+///    `onEnded` at all, since the `DragGesture` half never began -- not by
+///    trying to catch that missed event, but by no longer needing to:
+///    `isAnyOtherTileDragging` is only checked once real movement is
+///    already happening (the `.second` case below), not on a fresh press
+///    (the `.first` case), so a stuck "still dragging" state from a
+///    missed release self-heals the instant any tile is touched again,
+///    rather than requiring the exact original tile to be the one that
+///    clears it.
 private struct DraggableTileView: View {
     let tile: Tile
     let cellSize: CGFloat
@@ -240,33 +238,60 @@ private struct DraggableTileView: View {
             // same animation, causing it to visibly jitter.
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: base)
             .gesture(
-                LongPressGesture(minimumDuration: 0, maximumDistance: .infinity)
-                    .onChanged { pressed in
-                        // Only one tile may be actively dragged at a time --
-                        // each tile has its own independent gesture, so
-                        // without this gate, a second finger on a different
-                        // tile would start its own simultaneous drag. Once
-                        // a tile has claimed the active drag, every other
-                        // tile's gesture updates are ignored until it's
-                        // released.
-                        guard !isAnyOtherTileDragging else { return }
-                        // Finger touched down -- report the pickup and the
-                        // tile's own current cell as the candidate, so the
-                        // drop-zone highlight appears immediately under the
-                        // tile, before any movement.
-                        if pressed, !isDragging {
-                            isDragging = true
-                            onDragStart()
-                            reportCandidate()
+                LongPressGesture(minimumDuration: 0)
+                    .sequenced(before: DragGesture())
+                    .onChanged { value in
+                        switch value {
+                        case .first(true):
+                            // Finger touched down -- report the pickup and
+                            // the tile's own current cell as the candidate,
+                            // so the drop-zone highlight appears immediately
+                            // under the tile, before any movement.
+                            //
+                            // Deliberately NOT gated on `isAnyOtherTileDragging`
+                            // here (unlike the `.second` case below): a
+                            // release with too little movement to cross
+                            // DragGesture's own minimum distance never fires
+                            // this gesture's `onEnded` at all (see the
+                            // `.onEnded` comment below), which used to leave
+                            // `isAnyOtherTileDragging` stuck true for every
+                            // other tile until the original tile was
+                            // dragged for real. Letting a fresh press always
+                            // win here means that stuck state self-heals
+                            // the moment any tile is touched again, instead
+                            // of requiring the exact original tile to be
+                            // the one that clears it.
+                            if !isDragging {
+                                isDragging = true
+                                onDragStart()
+                                reportCandidate()
+                            }
+                        case .second(true, let drag):
+                            // Movement itself still respects the gate --
+                            // only one tile's translation should ever drive
+                            // `dragOffset`/the drop-zone highlight at a
+                            // time, even though a second finger could
+                            // technically still be touching another tile.
+                            guard !isAnyOtherTileDragging else { return }
+                            if !isDragging {
+                                isDragging = true
+                                onDragStart()
+                            }
+                            if let drag {
+                                dragOffset = drag.translation
+                                reportCandidate()
+                            }
+                        default:
+                            break
                         }
                     }
-                    .onEnded { _ in
+                    .onEnded { value in
                         // Ignore a release from a tile that was never
                         // granted the active drag (see the guard above).
-                        // Fires on every release regardless of whether the
-                        // tile ever actually moved -- see this view's doc
-                        // comment for why that independence matters.
                         guard isDragging else { return }
+                        if case .second(true, let drag?) = value {
+                            dragOffset = drag.translation
+                        }
                         let newTopLeft = CGPoint(
                             x: base.x + dragOffset.width,
                             y: base.y + dragOffset.height
@@ -276,14 +301,6 @@ private struct DraggableTileView: View {
                         onDragEnd(Position(column: col, row: row))
                         dragOffset = .zero
                         isDragging = false
-                    }
-            )
-            .simultaneousGesture(
-                DragGesture()
-                    .onChanged { value in
-                        guard !isAnyOtherTileDragging, isDragging else { return }
-                        dragOffset = value.translation
-                        reportCandidate()
                     }
             )
     }
