@@ -49,6 +49,17 @@ final class CustomBoardStore: ObservableObject {
         isCustomMode = true
     }
 
+    /// Empties every slot's letter, leaving each double tile's chosen
+    /// orientation untouched -- orientation isn't a "letter", so clearing
+    /// shouldn't reset it too.
+    func clearAll() {
+        for index in singles.indices { singles[index].letter = nil }
+        for index in doubles.indices {
+            doubles[index].firstLetter = nil
+            doubles[index].secondLetter = nil
+        }
+    }
+
     var isComplete: Bool {
         filledSingleCount == singles.count && filledDoubleCount == doubles.count
     }

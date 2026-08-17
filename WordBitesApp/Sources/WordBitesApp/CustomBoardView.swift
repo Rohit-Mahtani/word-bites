@@ -24,16 +24,32 @@ struct CustomBoardView: View {
                         .font(Theme.archivoBold(26))
                         .foregroundColor(Theme.ink)
                     Spacer()
-                    Button(action: onShowPresets) {
-                        Text("Presets")
-                            .font(Theme.archivoMedium(13))
-                            .foregroundColor(Theme.ink)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    HStack(spacing: 8) {
+                        Button(action: store.clearAll) {
+                            Text("Clear")
+                                .font(Theme.archivoMedium(13))
+                                .foregroundColor(Theme.error)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.error.opacity(0.12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Theme.error.opacity(0.4), lineWidth: 1)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+
+                        Button(action: onShowPresets) {
+                            Text("Presets")
+                                .font(Theme.archivoMedium(13))
+                                .foregroundColor(Theme.ink)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    LinearGradient(colors: [Theme.gold, Theme.goldDeep], startPoint: .top, endPoint: .bottom)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
                     }
                 }
 
