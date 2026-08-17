@@ -134,7 +134,6 @@ struct BoardView: View, Equatable {
             pitch: pitch,
             base: topLeft(for: placement),
             size: tileSize(for: tile),
-            isAnyOtherTileDragging: draggingTileID != nil && draggingTileID != tile.id,
             onDragStart: {
                 draggingTileID = tile.id
                 FeedbackPlayer.tilePickedUp()
@@ -175,14 +174,14 @@ struct BoardView: View, Equatable {
 /// own input properties (`tile`, `base`, ...) are unchanged between parent
 /// re-renders, so the other 10 tiles do no work per frame. `BoardView`
 /// still needs to know which tile is dragging (for the drop-zone highlight
-/// and to block a second finger from starting another drag), so that part
-/// is reported up via `onDragStart`/`onDragCandidateChange`/`onDragEnd`
-/// rather than duplicated here.
+/// and z-index), so that part is reported up via
+/// `onDragStart`/`onDragCandidateChange`/`onDragEnd` rather than duplicated
+/// here.
 ///
 /// Fires pickup on touch, not just after real movement, via
 /// `LongPressGesture(minimumDuration: 0).sequenced(before: DragGesture())`
 /// -- a single composite gesture per tile, not two. This exact mechanism is
-/// the result of four attempts, three of them reverted:
+/// the result of five attempts, four of them reverted or corrected:
 /// 1. Lowering this gesture's own `minimumDistance` to 0 -- every sub-pixel
 ///    touch jitter got processed as a live drag event, the confirmed cause
 ///    of persistent dragging choppiness.
@@ -197,25 +196,33 @@ struct BoardView: View, Equatable {
 ///    release-detection) -- movement stopped working *entirely*.
 ///    `.simultaneousGesture` alongside a `LongPressGesture` on this view is
 ///    now also a confirmed trap, not just a theoretical risk.
-/// 4. Current: back to this single composite gesture exactly as in
-///    attempt 1's structure (proven not to break movement), fixing its one
-///    remaining known bug -- a release with too little movement to cross
-///    `DragGesture`'s own minimum distance never fires this gesture's
-///    `onEnded` at all, since the `DragGesture` half never began -- not by
-///    trying to catch that missed event, but by no longer needing to:
-///    `isAnyOtherTileDragging` is only checked once real movement is
-///    already happening (the `.second` case below), not on a fresh press
-///    (the `.first` case), so a stuck "still dragging" state from a
-///    missed release self-heals the instant any tile is touched again,
-///    rather than requiring the exact original tile to be the one that
-///    clears it.
+/// 4. Back to this composite gesture, unchanged from attempt 1, but with a
+///    cross-tile `isAnyOtherTileDragging` guard removed only from the
+///    fresh-press case, so a stuck "still dragging" tile could no longer
+///    block a *different* tile from starting. This didn't actually work --
+///    `isAnyOtherTileDragging` is a `let` captured on this struct at the
+///    render that created it, and a still-in-progress gesture keeps using
+///    that same captured value; reassigning `BoardView`'s `draggingTileID`
+///    from inside the gesture doesn't retroactively update it before the
+///    gesture's own next event.
+/// 5. Current: the `isAnyOtherTileDragging` cross-tile gate is removed
+///    entirely, not partially. Each tile's press/drag/release is now fully
+///    independent of every other tile's state -- nothing here can be
+///    stale, because nothing here reads any other tile's state at all.
+///    The one known remaining gap: this gesture's own `onEnded` still
+///    doesn't fire for a release that never crosses `DragGesture`'s
+///    minimum distance (root cause of the original bug, still true) -- so
+///    a tile that's touched and released without moving may not play its
+///    *own* drop sound or drop its lifted-shadow look until it's genuinely
+///    dragged next. That's a cosmetic gap in this one tile's own state,
+///    not a functional one: real movement on this exact tile, and any
+///    interaction with every *other* tile, both work regardless.
 private struct DraggableTileView: View {
     let tile: Tile
     let cellSize: CGFloat
     let pitch: CGFloat
     let base: CGPoint
     let size: CGSize
-    let isAnyOtherTileDragging: Bool
     let onDragStart: () -> Void
     let onDragCandidateChange: (Position?) -> Void
     let onDragEnd: (Position) -> Void
@@ -247,32 +254,12 @@ private struct DraggableTileView: View {
                             // the tile's own current cell as the candidate,
                             // so the drop-zone highlight appears immediately
                             // under the tile, before any movement.
-                            //
-                            // Deliberately NOT gated on `isAnyOtherTileDragging`
-                            // here (unlike the `.second` case below): a
-                            // release with too little movement to cross
-                            // DragGesture's own minimum distance never fires
-                            // this gesture's `onEnded` at all (see the
-                            // `.onEnded` comment below), which used to leave
-                            // `isAnyOtherTileDragging` stuck true for every
-                            // other tile until the original tile was
-                            // dragged for real. Letting a fresh press always
-                            // win here means that stuck state self-heals
-                            // the moment any tile is touched again, instead
-                            // of requiring the exact original tile to be
-                            // the one that clears it.
                             if !isDragging {
                                 isDragging = true
                                 onDragStart()
                                 reportCandidate()
                             }
                         case .second(true, let drag):
-                            // Movement itself still respects the gate --
-                            // only one tile's translation should ever drive
-                            // `dragOffset`/the drop-zone highlight at a
-                            // time, even though a second finger could
-                            // technically still be touching another tile.
-                            guard !isAnyOtherTileDragging else { return }
                             if !isDragging {
                                 isDragging = true
                                 onDragStart()
@@ -286,8 +273,8 @@ private struct DraggableTileView: View {
                         }
                     }
                     .onEnded { value in
-                        // Ignore a release from a tile that was never
-                        // granted the active drag (see the guard above).
+                        // Ignore a release from a tile whose own press was
+                        // never recognized in the first place.
                         guard isDragging else { return }
                         if case .second(true, let drag?) = value {
                             dragOffset = drag.translation
