@@ -20,7 +20,7 @@ enum MusicPlayer {
             try AVAudioSession.sharedInstance().setActive(true)
             let audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer.numberOfLoops = -1
-            audioPlayer.volume = 0.4
+            audioPlayer.volume = 0.5
             audioPlayer.prepareToPlay()
             player = audioPlayer
             if AudioSettings.isMusicEnabled {

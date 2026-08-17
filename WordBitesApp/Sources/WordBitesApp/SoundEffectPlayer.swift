@@ -65,6 +65,7 @@ final class SoundEffectPlayer {
             pools[resource] = VoicePool(nodes: nodes, buffer: buffer)
         }
 
+        engine.mainMixerNode.outputVolume = 0.8
         try? engine.start()
     }
 
