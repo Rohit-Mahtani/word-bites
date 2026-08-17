@@ -205,18 +205,29 @@ struct BoardView: View, Equatable {
 ///    that same captured value; reassigning `BoardView`'s `draggingTileID`
 ///    from inside the gesture doesn't retroactively update it before the
 ///    gesture's own next event.
-/// 5. Current: the `isAnyOtherTileDragging` cross-tile gate is removed
-///    entirely, not partially. Each tile's press/drag/release is now fully
-///    independent of every other tile's state -- nothing here can be
-///    stale, because nothing here reads any other tile's state at all.
-///    The one known remaining gap: this gesture's own `onEnded` still
-///    doesn't fire for a release that never crosses `DragGesture`'s
-///    minimum distance (root cause of the original bug, still true) -- so
-///    a tile that's touched and released without moving may not play its
-///    *own* drop sound or drop its lifted-shadow look until it's genuinely
-///    dragged next. That's a cosmetic gap in this one tile's own state,
-///    not a functional one: real movement on this exact tile, and any
-///    interaction with every *other* tile, both work regardless.
+/// 5. The `isAnyOtherTileDragging` cross-tile gate removed entirely, not
+///    partially. Each tile's press/drag/release is now fully independent
+///    of every other tile's state -- nothing here can be stale, because
+///    nothing here reads any other tile's state at all. Fixed the
+///    gameplay-blocking part of the original bug, but left a cosmetic gap:
+///    this gesture's own `onEnded` still didn't fire for a release that
+///    never crossed `DragGesture`'s minimum distance, since the
+///    `DragGesture` half never began -- so a tile touched and released
+///    without moving wouldn't play its own drop sound or drop its
+///    lifted-shadow look until dragged for real.
+/// 6. Current: fixes that gap by using `DragGesture(minimumDistance: 0)`
+///    for the second phase instead of the default -- this makes it begin
+///    (and therefore reliably end/fire `onEnded`) on literally any touch,
+///    including zero movement. That reintroduces the exact condition
+///    attempt 1 warned about (every sub-pixel jitter now generates an
+///    event), so the movement-threshold check that `DragGesture`'s own
+///    `minimumDistance` used to do internally is now done by hand, in
+///    `exceedsMovementThreshold(_:)` below, before ever touching
+///    `dragOffset` -- the state-write frequency (the actual cost that
+///    caused the original choppiness) is unchanged from the working
+///    default-minimumDistance version; only the underlying recognizer's
+///    own begin/end lifecycle is different, which is exactly the part
+///    that needed to change.
 private struct DraggableTileView: View {
     let tile: Tile
     let cellSize: CGFloat
@@ -246,7 +257,7 @@ private struct DraggableTileView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: base)
             .gesture(
                 LongPressGesture(minimumDuration: 0)
-                    .sequenced(before: DragGesture())
+                    .sequenced(before: DragGesture(minimumDistance: 0))
                     .onChanged { value in
                         switch value {
                         case .first(true):
@@ -264,7 +275,7 @@ private struct DraggableTileView: View {
                                 isDragging = true
                                 onDragStart()
                             }
-                            if let drag {
+                            if let drag, exceedsMovementThreshold(drag.translation) {
                                 dragOffset = drag.translation
                                 reportCandidate()
                             }
@@ -276,7 +287,7 @@ private struct DraggableTileView: View {
                         // Ignore a release from a tile whose own press was
                         // never recognized in the first place.
                         guard isDragging else { return }
-                        if case .second(true, let drag?) = value {
+                        if case .second(true, let drag?) = value, exceedsMovementThreshold(drag.translation) {
                             dragOffset = drag.translation
                         }
                         let newTopLeft = CGPoint(
@@ -290,6 +301,15 @@ private struct DraggableTileView: View {
                         isDragging = false
                     }
             )
+    }
+
+    // Matches SwiftUI's own default DragGesture minimumDistance -- see the
+    // doc comment above (attempt 6) for why this check now lives here
+    // instead of being left to the gesture itself.
+    private static let movementThreshold: CGFloat = 10
+
+    private func exceedsMovementThreshold(_ translation: CGSize) -> Bool {
+        hypot(translation.width, translation.height) > Self.movementThreshold
     }
 
     /// Reports the board cell under the tile's current live position
