@@ -1,24 +1,75 @@
 import SwiftUI
+import UIKit
 import WordBitesKit
 
-/// Reports the word list's scrollable content frame, in `.global`
-/// coordinates. Paired with `WordListViewportFramePreferenceKey` below to
-/// compute how far the list has been scrolled -- see the comment on
-/// `wordListScrollFraction` for why `.global` rather than a named
-/// coordinate space.
-private struct WordListContentFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
+/// Observes the word list's enclosing `UIScrollView` directly via KVO on
+/// its `contentOffset`, instead of SwiftUI's `GeometryReader` +
+/// `PreferenceKey` -- that pattern has now failed 4 times in this app for
+/// tracking a live scroll position (toast positioning, HUD/board gap
+/// measurement, and two separate attempts at this exact scrubber sync, the
+/// most recent confirmed on-device to just never update: the thumb stayed
+/// snapped to its initial computed value the whole time, which is why it
+/// "shot back" the instant a scrubber-driven scroll ended and the
+/// (frozen) external value took back over. GeometryReader/PreferenceKey
+/// inside a `ScrollView`'s own scrolling content is being treated as a
+/// dead end in this app now, not retried a fifth time.
+///
+/// KVO on `contentOffset` is a plain UIKit mechanism, not a SwiftUI-internal
+/// one, and doesn't touch the scroll view's delegate -- it coexists safely
+/// with whatever SwiftUI itself already set as the delegate. It also picks
+/// up `scrollProxy.scrollTo(...)`-driven scrolls the same as a real
+/// touch-scroll, since both ultimately move the same `contentOffset`.
+private struct ScrollFractionObserver: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
 
-/// Reports the word list's fixed on-screen viewport frame (the ScrollView
-/// itself, not its scrolling content), in `.global` coordinates.
-private struct WordListViewportFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        // Deferred one runloop tick so the view is actually inserted into
+        // its window/superview chain before searching it -- at
+        // `makeUIView` time itself, that chain isn't guaranteed complete.
+        DispatchQueue.main.async {
+            context.coordinator.attach(startingFrom: view)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChange: onChange)
+    }
+
+    final class Coordinator: NSObject {
+        private let onChange: (CGFloat) -> Void
+        private var observation: NSKeyValueObservation?
+
+        init(onChange: @escaping (CGFloat) -> Void) {
+            self.onChange = onChange
+        }
+
+        func attach(startingFrom view: UIView) {
+            guard observation == nil, let scrollView = Self.findEnclosingScrollView(from: view) else { return }
+            observation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in
+                let scrollableRange = scrollView.contentSize.height - scrollView.bounds.height
+                guard scrollableRange > 0 else {
+                    self?.onChange(0)
+                    return
+                }
+                let fraction = scrollView.contentOffset.y / scrollableRange
+                self?.onChange(min(1, max(0, fraction)))
+            }
+        }
+
+        private static func findEnclosingScrollView(from view: UIView) -> UIScrollView? {
+            var current = view.superview
+            while let candidate = current {
+                if let scrollView = candidate as? UIScrollView { return scrollView }
+                current = candidate.superview
+            }
+            return nil
+        }
     }
 }
 
@@ -34,28 +85,10 @@ struct SolverView: View {
     @State private var selectedWord: String?
     @State private var screenSize: CGSize = .zero
 
-    // Tracks the word list's live scroll position so the scrubber's thumb
-    // also moves when the list is scrolled the normal way, by swiping it
-    // directly. A first attempt at this used a named coordinate space on
-    // the ScrollView (geometry.frame(in: .named("wordListScroll"))) and
-    // didn't work on-device. This computes the same offset a different way
-    // -- the content's position minus the scroll viewport's own position,
-    // both measured in plain .global coordinates -- to sidestep whatever
-    // specific quirk the named-space version had. This exact mechanism was
-    // built once already but got swept up in an unrelated blanket revert
-    // before ever being tested on-device, so this is its first real test,
-    // not a second confirmed failure.
-    @State private var wordListContentGlobalMinY: CGFloat = 0
-    @State private var wordListViewportGlobalMinY: CGFloat = 0
-    @State private var wordListContentHeight: CGFloat = 0
-    @State private var wordListViewportHeight: CGFloat = 0
-
-    private var wordListScrollFraction: CGFloat {
-        let scrollableRange = wordListContentHeight - wordListViewportHeight
-        guard scrollableRange > 0 else { return 0 }
-        let offset = wordListContentGlobalMinY - wordListViewportGlobalMinY
-        return min(1, max(0, -offset / scrollableRange))
-    }
+    // Tracks the word list's live scroll position, via ScrollFractionObserver
+    // above, so the scrubber's thumb also moves when the list is scrolled
+    // the normal way, by swiping it directly.
+    @State private var wordListScrollFraction: CGFloat = 0
 
     private var groupedWords: [(length: Int, words: [String])] {
         Dictionary(grouping: allWords, by: \.count)
@@ -174,17 +207,12 @@ struct SolverView: View {
                                 .padding(.bottom, 20)
                                 .padding(.trailing, flatWords.count > 1 ? 8 : 0)
                                 .background(
-                                    GeometryReader { geometry in
-                                        Color.clear.preference(key: WordListContentFramePreferenceKey.self, value: geometry.frame(in: .global))
+                                    ScrollFractionObserver { fraction in
+                                        wordListScrollFraction = fraction
                                     }
                                 )
                             }
                             .scrollIndicators(.hidden)
-                            .background(
-                                GeometryReader { geometry in
-                                    Color.clear.preference(key: WordListViewportFramePreferenceKey.self, value: geometry.frame(in: .global))
-                                }
-                            )
 
                             // Replaces the native scroll indicator entirely
                             // (hidden above) with one draggable track. Maps
@@ -197,11 +225,8 @@ struct SolverView: View {
                             //
                             // The thumb also reflects the list's position
                             // when it's scrolled the normal way (swiping),
-                            // via wordListScrollFraction -- see that
-                            // property's comment for why this uses plain
-                            // .global frame subtraction rather than the
-                            // named-coordinate-space technique that didn't
-                            // work on-device.
+                            // via wordListScrollFraction, kept live by
+                            // ScrollFractionObserver above.
                             if flatWords.count > 1 {
                                 WordListScrubber(tickFractions: groupStartFractions, externalFraction: wordListScrollFraction) { fraction in
                                     let index = min(flatWords.count - 1, Int(fraction * CGFloat(flatWords.count)))
@@ -210,14 +235,6 @@ struct SolverView: View {
                                 }
                                 .frame(width: 10)
                             }
-                        }
-                        .onPreferenceChange(WordListContentFramePreferenceKey.self) { frame in
-                            wordListContentGlobalMinY = frame.minY
-                            wordListContentHeight = frame.height
-                        }
-                        .onPreferenceChange(WordListViewportFramePreferenceKey.self) { frame in
-                            wordListViewportGlobalMinY = frame.minY
-                            wordListViewportHeight = frame.height
                         }
                     }
                 }
