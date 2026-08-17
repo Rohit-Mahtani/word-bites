@@ -73,6 +73,23 @@ private struct ScrollFractionObserver: UIViewRepresentable {
     }
 }
 
+/// Holds the word list's live scroll fraction as a small, isolated
+/// reference type, observed only by `WordListScrubber` -- not by
+/// `SolverView` itself. `SolverView`'s body rebuilds `groupedWords` and
+/// `flatWords` (an uncached `Dictionary` grouping + sort over every solver
+/// word) on every invocation; if `SolverView` held this via `@StateObject`/
+/// `@ObservedObject`, that whole rebuild would re-run on every single
+/// scroll frame the `ScrollFractionObserver` reports (up to 60-120Hz),
+/// which is exactly what made scrolling choppy. `SolverView` instead holds
+/// this via plain `@State` -- enough to keep one stable instance alive
+/// across `SolverView`'s own re-renders, without subscribing to its
+/// `@Published` changes -- and only passes the reference down;
+/// `WordListScrubber` is the one place that actually observes it, so only
+/// its own (cheap) body re-runs per scroll frame.
+private final class ScrollFractionModel: ObservableObject {
+    @Published var fraction: CGFloat = 0
+}
+
 struct SolverView: View {
     let allWords: Set<String>
     let foundWords: Set<String>
@@ -87,8 +104,10 @@ struct SolverView: View {
 
     // Tracks the word list's live scroll position, via ScrollFractionObserver
     // above, so the scrubber's thumb also moves when the list is scrolled
-    // the normal way, by swiping it directly.
-    @State private var wordListScrollFraction: CGFloat = 0
+    // the normal way, by swiping it directly. See ScrollFractionModel's
+    // doc comment for why this is plain @State holding a reference, not
+    // @StateObject.
+    @State private var scrollFractionModel = ScrollFractionModel()
 
     private var groupedWords: [(length: Int, words: [String])] {
         Dictionary(grouping: allWords, by: \.count)
@@ -208,7 +227,13 @@ struct SolverView: View {
                                 .padding(.trailing, flatWords.count > 1 ? 8 : 0)
                                 .background(
                                     ScrollFractionObserver { fraction in
-                                        wordListScrollFraction = fraction
+                                        // Mutates a @Published property on a
+                                        // reference SolverView itself only
+                                        // holds via plain @State (see
+                                        // ScrollFractionModel's doc comment)
+                                        // -- this does NOT invalidate
+                                        // SolverView's own body.
+                                        scrollFractionModel.fraction = fraction
                                     }
                                 )
                             }
@@ -225,10 +250,10 @@ struct SolverView: View {
                             //
                             // The thumb also reflects the list's position
                             // when it's scrolled the normal way (swiping),
-                            // via wordListScrollFraction, kept live by
+                            // via scrollFractionModel, kept live by
                             // ScrollFractionObserver above.
                             if flatWords.count > 1 {
-                                WordListScrubber(tickFractions: groupStartFractions, externalFraction: wordListScrollFraction) { fraction in
+                                WordListScrubber(tickFractions: groupStartFractions, model: scrollFractionModel) { fraction in
                                     let index = min(flatWords.count - 1, Int(fraction * CGFloat(flatWords.count)))
                                     let anchor: UnitPoint = fraction > 0.98 ? .bottom : .top
                                     scrollProxy.scrollTo(flatWords[index], anchor: anchor)
@@ -305,12 +330,16 @@ struct SolverView: View {
 /// scroll; faint tick marks show where each letter-length section starts.
 /// Reports a 0...1 fraction of how far down the track the touch is. While
 /// dragging, the thumb follows the touch directly; otherwise it follows
-/// `externalFraction`, which the call site derives from the word list's
-/// own live scroll position -- so the thumb tracks the list whichever way
-/// it's being moved, drag-the-scrubber or swipe-the-list.
+/// `model.fraction`, which the call site keeps live from the word list's
+/// own scroll position -- so the thumb tracks the list whichever way it's
+/// being moved, drag-the-scrubber or swipe-the-list. Observing `model`
+/// here (rather than `SolverView` passing a plain `CGFloat` down) is
+/// deliberate -- see `ScrollFractionModel`'s doc comment: this confines
+/// the per-scroll-frame re-render to just this small view instead of all
+/// of `SolverView`.
 private struct WordListScrubber: View {
     let tickFractions: [CGFloat]
-    let externalFraction: CGFloat
+    @ObservedObject var model: ScrollFractionModel
     let onDrag: (CGFloat) -> Void
 
     @State private var isDragging = false
@@ -319,7 +348,7 @@ private struct WordListScrubber: View {
     private let thumbHeight: CGFloat = 50
 
     private var displayedFraction: CGFloat {
-        isDragging ? thumbFraction : externalFraction
+        isDragging ? thumbFraction : model.fraction
     }
 
     var body: some View {
