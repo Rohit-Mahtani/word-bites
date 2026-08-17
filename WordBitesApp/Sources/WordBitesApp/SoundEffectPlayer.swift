@@ -1,71 +1,96 @@
 import AVFoundation
 
 /// Plays short one-shot sound effects (word-scored chimes, tile pickup/drop,
-/// button taps) by name. Each call spins up its own `AVAudioPlayer` rather
-/// than reusing one shared player, so sounds triggered in quick succession
-/// layer on top of each other instead of cutting off.
-final class SoundEffectPlayer: NSObject {
+/// button taps) by name.
+///
+/// Built on `AVAudioEngine` + a small pool of pre-connected
+/// `AVAudioPlayerNode`s per sound, instead of constructing a fresh
+/// `AVAudioPlayer` on every call. The previous approach measurably caused
+/// the gameplay choppiness itself (confirmed by the user: muting sound
+/// effects alone made dragging perfectly smooth) -- every pickup, drop, and
+/// scored word was allocating a brand-new `AVAudioPlayer` (WAV parsing,
+/// buffer allocation, a new CoreAudio graph node) via
+/// `DispatchQueue.global(qos: .userInteractive)`, which is the *same*
+/// scheduling tier the main thread's own UI/gesture work runs at -- so it
+/// was never actually independent of gameplay, just dispatched elsewhere.
+///
+/// Here, every sound's PCM data is decoded once at setup, and each play
+/// call just schedules that already-decoded buffer onto an already-running,
+/// already-connected node -- no allocation, no parsing, no engine
+/// reconfiguration on the hot path. All engine setup and every trigger runs
+/// on one dedicated serial queue at `.userInitiated` (not `.userInteractive`),
+/// so this queue is never competing with the main thread at its own
+/// priority tier.
+final class SoundEffectPlayer {
     static let shared = SoundEffectPlayer()
 
-    private var activePlayers: [AVAudioPlayer] = []
+    private let engine = AVAudioEngine()
 
-    // Every resource's raw bytes, read from disk once up front instead of
-    // on every play() call. tilePickedUp()/tilePlaced() are called directly
-    // from inside the drag gesture's onChanged/onEnded closures -- the same
-    // runloop turn that moves the tile -- so `AVAudioPlayer(contentsOf:)`'s
-    // disk read there was a real, synchronous main-thread hitch landing at
-    // the exact moment of every pickup and drop, not just a one-off cost.
-    // Constructing a player from already-in-memory Data still does real
-    // work (decoding) but skips the disk I/O, which is the part with
-    // unpredictable latency.
-    private var cachedData: [String: Data] = [:]
+    // Each resource gets a handful of player nodes, cycled round-robin, so
+    // the same sound triggered rapidly (e.g. several 3-letter words scored
+    // back to back) still layers/overlaps the way distinct AVAudioPlayer
+    // instances used to, rather than a single node cutting itself off.
+    private struct VoicePool {
+        let nodes: [AVAudioPlayerNode]
+        let buffer: AVAudioPCMBuffer
+        var nextIndex = 0
+    }
+    private static let voicesPerResource = 4
 
-    private override init() {
-        super.init()
+    private var pools: [String: VoicePool] = [:]
+    private let queue = DispatchQueue(label: "com.rohitmahtani.wordbites.audio", qos: .userInitiated)
+
+    private init() {
+        queue.async { [weak self] in
+            self?.setUpEngine()
+        }
+    }
+
+    private func setUpEngine() {
         try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
-        for resource in [
-            "WordSound3", "WordSound4", "WordSound5", "WordSound6",
-            "TilePickup", "TileDrop", "ButtonTap"
-        ] {
+
+        for resource in ["WordSound3", "WordSound4", "WordSound5", "WordSound6", "TilePickup", "TileDrop", "ButtonTap"] {
             guard let url = Bundle.main.url(forResource: resource, withExtension: "wav"),
-                  let data = try? Data(contentsOf: url) else { continue }
-            cachedData[resource] = data
-        }
-    }
+                  let file = try? AVAudioFile(forReading: url),
+                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+                  (try? file.read(into: buffer)) != nil
+            else { continue }
 
-    /// Silently does nothing if the named resource isn't bundled/cached, or
-    /// if the player has sound effects turned off, so callers don't need to
-    /// guard either case themselves.
-    ///
-    /// Constructing an `AVAudioPlayer` even from in-memory `Data` (WAV
-    /// header parsing, buffer allocation) is still real work -- and this is
-    /// called directly from inside the drag gesture's onChanged/onEnded
-    /// closures, the same runloop turn that moves the tile. Doing that
-    /// construction on a background queue, then hopping back to the main
-    /// thread only for the cheap `play()` call itself, keeps the gesture
-    /// callback from ever waiting on it. Costs a few milliseconds of extra
-    /// latency before the sound audibly starts, which is the right
-    /// trade-off here: a slightly-late pickup blip is far less noticeable
-    /// than a dropped frame in the middle of a drag.
-    func play(resource: String, extension ext: String = "wav") {
-        guard AudioSettings.isSFXEnabled else { return }
-        guard let data = cachedData[resource] else { return }
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-            guard let player = try? AVAudioPlayer(data: data) else { return }
-            player.prepareToPlay()
-            DispatchQueue.main.async {
-                guard let self else { return }
-                player.delegate = self
-                self.activePlayers.append(player)
-                player.play()
+            let nodes = (0..<Self.voicesPerResource).map { _ in AVAudioPlayerNode() }
+            for node in nodes {
+                engine.attach(node)
+                engine.connect(node, to: engine.mainMixerNode, format: file.processingFormat)
             }
+            pools[resource] = VoicePool(nodes: nodes, buffer: buffer)
         }
-    }
-}
 
-extension SoundEffectPlayer: AVAudioPlayerDelegate {
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        activePlayers.removeAll { $0 === player }
+        try? engine.start()
+    }
+
+    /// Silently does nothing if the named resource isn't ready yet, or if
+    /// the player has sound effects turned off, so callers don't need to
+    /// guard either case themselves.
+    func play(resource: String) {
+        guard AudioSettings.isSFXEnabled else { return }
+        queue.async { [weak self] in
+            guard let self, var pool = self.pools[resource] else { return }
+
+            if !self.engine.isRunning {
+                // The engine can stop itself on a real audio interruption
+                // (a phone call, Siri, another app taking audio focus) --
+                // restart it defensively so sound doesn't silently die for
+                // the rest of the session.
+                try? self.engine.start()
+            }
+
+            let node = pool.nodes[pool.nextIndex]
+            pool.nextIndex = (pool.nextIndex + 1) % pool.nodes.count
+            self.pools[resource] = pool
+
+            node.stop()
+            node.scheduleBuffer(pool.buffer, at: nil, options: [])
+            node.play()
+        }
     }
 }
