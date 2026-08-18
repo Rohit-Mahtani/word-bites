@@ -62,6 +62,18 @@ enum Theme {
 
     static let error = Color(hex: 0xB5533C)
 
+    // Welcome screen only (2026-08 home screen redesign): this screen's own
+    // background spotlight and primary-button gold, deliberately separate
+    // from the app-wide `gold`/`goldDeep` used everywhere else (Mode
+    // Select, Solver, Custom Board) so tuning this screen never touches
+    // every other gold-accented button.
+    static let welcomeSpotlightTop = Color(hex: 0xFDF8EA)
+    static let welcomeSpotlightMid = Color(hex: 0xF1E6C9)
+    static let welcomeSpotlightBottom = Color(hex: 0xE0CEA4)
+    static let welcomeGoldTop = Color(hex: 0xE4C055)
+    static let welcomeGoldBottom = Color(hex: 0xAE8B2B)
+    static let welcomeGoldShadow = Color(hex: 0x8A6C22)
+
     static func archivoMedium(_ size: CGFloat) -> Font { .custom("ArchivoRoman-Medium", size: size) }
     static func archivoSemiBold(_ size: CGFloat) -> Font { .custom("ArchivoRoman-SemiBold", size: size) }
     static func archivoBold(_ size: CGFloat) -> Font { .custom("ArchivoRoman-Bold", size: size) }
