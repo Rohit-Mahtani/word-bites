@@ -118,6 +118,12 @@ private struct WelcomeSecondaryButtonStyle: ButtonStyle {
             .foregroundColor(Theme.textMutedDark)
             .frame(maxWidth: .infinity)
             .frame(height: 64)
+            // A Color.clear background isn't hit-testable content by
+            // default in SwiftUI -- without this, only the "High Scores"
+            // text itself (the one opaque thing in the label) registered
+            // taps, not the rest of the 64pt pill. contentShape makes the
+            // whole frame, transparent fill included, count.
+            .contentShape(Rectangle())
             .background(configuration.isPressed ? Theme.textMutedDark.opacity(0.08) : Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: 32)
