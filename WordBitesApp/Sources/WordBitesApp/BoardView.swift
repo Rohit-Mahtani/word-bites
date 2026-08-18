@@ -247,15 +247,27 @@ struct BoardView: View, Equatable {
 ///    default-minimumDistance version; only the underlying recognizer's
 ///    own begin/end lifecycle is different, which is exactly the part
 ///    that needed to change.
-/// 7. Current: attempt 5 removed cross-tile exclusivity entirely, which
-///    meant two different fingers on two different tiles really could
-///    both drag at once. Reintroduced via `ActiveDragCoordinator` (a
-///    shared class reference, not a captured struct `let`) rather than
-///    bringing back the exact mechanism from attempt 4 -- reading a
-///    shared reference's property is never stale the way a captured
-///    value could be, and attempt 6 already made `onEnded` fire reliably
-///    on every release, so the original "stuck forever" failure mode this
-///    exclusivity check used to cause is independently fixed too.
+/// 7. Attempt 5 removed cross-tile exclusivity entirely, which meant two
+///    different fingers on two different tiles really could both drag at
+///    once. Reintroduced via `ActiveDragCoordinator` (a shared class
+///    reference, not a captured struct `let`) rather than bringing back
+///    the exact mechanism from attempt 4 -- reading a shared reference's
+///    property is never stale the way a captured value could be, and
+///    attempt 6 already made `onEnded` fire reliably on every release, so
+///    the original "stuck forever" failure mode this exclusivity check
+///    used to cause is independently fixed too. First version of this
+///    guarded `.second`'s entry on `activeDrag.draggingTileID == tile.id`
+///    alone -- confirmed on-device this broke movement *entirely*: this
+///    composite gesture doesn't reliably deliver a standalone `.first(true)`
+///    event before `.second` starts arriving, and `.first(true)` was the
+///    only branch that acquired the lock, so `.second` could never
+///    bootstrap and every tile's movement was rejected.
+/// 8. Current: `.second` now has the same acquire-or-already-mine guard as
+///    `.first(true)`, and independently sets `activeDrag.draggingTileID`
+///    in its own bootstrap block -- restores the redundant "either branch
+///    can be the one that starts things" robustness the pre-exclusivity
+///    code always had, while still rejecting a genuinely different tile
+///    that doesn't already hold the lock.
 private struct DraggableTileView: View {
     let tile: Tile
     let cellSize: CGFloat
@@ -312,13 +324,19 @@ private struct DraggableTileView: View {
                                 reportCandidate()
                             }
                         case .second(true, let drag):
-                            // Only this tile's own movement updates count --
-                            // if it never acquired the lock above (another
-                            // tile already held it), this guard rejects
-                            // every subsequent update too.
-                            guard activeDrag.draggingTileID == tile.id else { return }
+                            // Same acquire-or-already-mine guard as
+                            // .first(true) above, independently -- this
+                            // composite gesture doesn't reliably deliver a
+                            // standalone .first(true) event before .second
+                            // starts arriving (confirmed on-device: making
+                            // .second depend on .first having already run
+                            // broke movement entirely), so .second must be
+                            // able to bootstrap isDragging/the lock on its
+                            // own too, not just check it.
+                            guard activeDrag.draggingTileID == nil || activeDrag.draggingTileID == tile.id else { return }
                             if !isDragging {
                                 isDragging = true
+                                activeDrag.draggingTileID = tile.id
                                 onDragStart()
                             }
                             if let drag, exceedsMovementThreshold(drag.translation) {
