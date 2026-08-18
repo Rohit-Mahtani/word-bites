@@ -1,6 +1,20 @@
 import SwiftUI
 import WordBitesKit
 
+/// Tracks which tile (if any) currently owns the active drag, shared by
+/// reference across every tile's gesture so each check reads the CURRENT
+/// value at the moment it runs, not a value captured once. A plain struct
+/// `let` (the previous mechanism for this) went stale mid-gesture -- an
+/// already-in-progress gesture keeps using whatever value its own view
+/// instance was constructed with, so reassigning `BoardView`'s state from
+/// inside one tile's gesture didn't reliably reach a different tile's
+/// already-running one. Reading `activeDrag.draggingTileID` through a
+/// shared class reference instead has no such staleness: it's the same
+/// storage location no matter which gesture, or when, reads it.
+final class ActiveDragCoordinator {
+    var draggingTileID: UUID?
+}
+
 /// The felt board: 8x9 grid, tiles absolutely positioned and draggable.
 /// A tile's live drag is just a visual offset from its last committed
 /// position — on release we compute the nearest cell, ask the view model
@@ -25,6 +39,10 @@ struct BoardView: View, Equatable {
 
     @State private var draggingTileID: UUID?
     @State private var dragCandidateOrigin: Position?
+    // Plain @State (not @StateObject -- ActiveDragCoordinator isn't even
+    // Observable) purely for stable identity: the same instance survives
+    // BoardView's own re-renders, and nothing here subscribes to it.
+    @State private var activeDrag = ActiveDragCoordinator()
 
     static func == (lhs: BoardView, rhs: BoardView) -> Bool {
         lhs.tiles == rhs.tiles && lhs.placements == rhs.placements && lhs.cellSize == rhs.cellSize
@@ -134,6 +152,7 @@ struct BoardView: View, Equatable {
             pitch: pitch,
             base: topLeft(for: placement),
             size: tileSize(for: tile),
+            activeDrag: activeDrag,
             onDragStart: {
                 draggingTileID = tile.id
                 FeedbackPlayer.tilePickedUp()
@@ -215,9 +234,9 @@ struct BoardView: View, Equatable {
 ///    `DragGesture` half never began -- so a tile touched and released
 ///    without moving wouldn't play its own drop sound or drop its
 ///    lifted-shadow look until dragged for real.
-/// 6. Current: fixes that gap by using `DragGesture(minimumDistance: 0)`
-///    for the second phase instead of the default -- this makes it begin
-///    (and therefore reliably end/fire `onEnded`) on literally any touch,
+/// 6. Fixes that gap by using `DragGesture(minimumDistance: 0)` for the
+///    second phase instead of the default -- this makes it begin (and
+///    therefore reliably end/fire `onEnded`) on literally any touch,
 ///    including zero movement. That reintroduces the exact condition
 ///    attempt 1 warned about (every sub-pixel jitter now generates an
 ///    event), so the movement-threshold check that `DragGesture`'s own
@@ -228,12 +247,22 @@ struct BoardView: View, Equatable {
 ///    default-minimumDistance version; only the underlying recognizer's
 ///    own begin/end lifecycle is different, which is exactly the part
 ///    that needed to change.
+/// 7. Current: attempt 5 removed cross-tile exclusivity entirely, which
+///    meant two different fingers on two different tiles really could
+///    both drag at once. Reintroduced via `ActiveDragCoordinator` (a
+///    shared class reference, not a captured struct `let`) rather than
+///    bringing back the exact mechanism from attempt 4 -- reading a
+///    shared reference's property is never stale the way a captured
+///    value could be, and attempt 6 already made `onEnded` fire reliably
+///    on every release, so the original "stuck forever" failure mode this
+///    exclusivity check used to cause is independently fixed too.
 private struct DraggableTileView: View {
     let tile: Tile
     let cellSize: CGFloat
     let pitch: CGFloat
     let base: CGPoint
     let size: CGSize
+    let activeDrag: ActiveDragCoordinator
     let onDragStart: () -> Void
     let onDragCandidateChange: (Position?) -> Void
     let onDragEnd: (Position) -> Void
@@ -265,16 +294,29 @@ private struct DraggableTileView: View {
                     .onChanged { value in
                         switch value {
                         case .first(true):
+                            // Only allowed to start if no OTHER tile
+                            // currently owns the drag -- reads
+                            // activeDrag.draggingTileID fresh through the
+                            // shared reference, not a captured snapshot, so
+                            // this can't go stale mid-gesture the way the
+                            // old struct-`let` version could.
+                            guard activeDrag.draggingTileID == nil || activeDrag.draggingTileID == tile.id else { return }
                             // Finger touched down -- report the pickup and
                             // the tile's own current cell as the candidate,
                             // so the drop-zone highlight appears immediately
                             // under the tile, before any movement.
                             if !isDragging {
                                 isDragging = true
+                                activeDrag.draggingTileID = tile.id
                                 onDragStart()
                                 reportCandidate()
                             }
                         case .second(true, let drag):
+                            // Only this tile's own movement updates count --
+                            // if it never acquired the lock above (another
+                            // tile already held it), this guard rejects
+                            // every subsequent update too.
+                            guard activeDrag.draggingTileID == tile.id else { return }
                             if !isDragging {
                                 isDragging = true
                                 onDragStart()
@@ -303,6 +345,9 @@ private struct DraggableTileView: View {
                         onDragEnd(Position(column: col, row: row))
                         dragOffset = .zero
                         isDragging = false
+                        if activeDrag.draggingTileID == tile.id {
+                            activeDrag.draggingTileID = nil
+                        }
                     }
             )
     }
