@@ -65,6 +65,18 @@ struct LetterInputTile: View {
                     onFilled()
                 }
             }
+            .onChange(of: letter) { newLetter in
+                // Keeps this tile's own displayed text in sync when `letter`
+                // changes for a reason OTHER than typing into this exact
+                // field -- e.g. CustomBoardStore.clearAll() setting every
+                // letter to nil at once. Without this, `text` (the actual
+                // source of what the TextField renders) stayed stale until
+                // this view was torn down and recreated, which is why
+                // Clear looked like it didn't work until leaving and
+                // re-entering the screen.
+                let newText = newLetter.map(String.init) ?? ""
+                if text != newText { text = newText }
+            }
             .onAppear {
                 if let letter { text = String(letter) }
             }
