@@ -254,7 +254,11 @@ private struct DraggableTileView: View {
             // from being recognized until that transaction settled, and let
             // unrelated layout (the board's position) get swept into the
             // same animation, causing it to visibly jitter.
-            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: base)
+            // response shortens how long the settle takes; dampingFraction
+            // closer to 1 cuts down the springy overshoot/bounce that read
+            // as "floaty" -- still a spring curve (eased, not a hard cut),
+            // just a tighter and quicker one.
+            .animation(.spring(response: 0.2, dampingFraction: 0.82), value: base)
             .gesture(
                 LongPressGesture(minimumDuration: 0)
                     .sequenced(before: DragGesture(minimumDistance: 0))
